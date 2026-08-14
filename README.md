@@ -25,11 +25,11 @@ ArtSync replaces the executables. Your `.bat` files, Task Scheduler entries, and
 
 | Phase | Deliverable | Status |
 |---|---|---|
-| 1 | Devart argv parser + CLI dispatch | ✅ Complete |
-| 2 | Schema compare / sync via DacFx | ✅ Complete |
-| 3 | Data compare / sync via server-side hash streams | ✅ Complete (engine interfaces; live SQL in progress) |
-| 4 | `.scflt` object filter support | ✅ Complete |
-| 5 | Soak vs Devart; scheduler exe deployment | 🔄 In progress |
+| 1 | Devart argv parser + CLI dispatch | Complete |
+| 2 | Schema compare / sync via DacFx | Complete |
+| 3 | Data compare / sync via server-side hash streams | Complete |
+| 4 | `.scflt` object filter + `/report` + `/log` | Complete |
+| 5 | Soak vs Devart on a licensed machine | Optional (needs a Devart license) |
 
 ---
 
@@ -109,7 +109,7 @@ ArtSync.Compat         Devart argv tokenizer, argfile, redaction
 ArtSync.Cli            argv[0] dispatch, help, exit codes
 ArtSync.Schema         DacFx schema engine behind ISchemaCompare
 ArtSync.Data           Hash-stream data engine behind IDataCompare
-ArtSync.Reporting      HTML / CSV / XML report writers (planned)
+ArtSync.Reporting      HTML / CSV / XML report writers + `/log`
 ```
 
 All engine code sits behind thin interfaces. `ArtSync.Cli` depends only on `IArgvParser` and `IOperationHandler` — it never imports DacFx or SqlClient directly.
@@ -120,19 +120,21 @@ All engine code sits behind thin interfaces. `ArtSync.Cli` depends only on `IArg
 
 | Feature | Status |
 |---|---|
-| `/schemacompare` compare + script + apply | ✅ |
-| `/datacompare` compare + script + apply | ✅ (interfaces; live hash engine in progress) |
-| `/source connection:"…"` | ✅ |
-| `/source server:… database:… user:… password:…` | ✅ |
-| `/argfile` | ✅ |
-| `/filter:<.scflt>` (schema) | ✅ |
-| `/sync` / `/sync:<file>` | ✅ |
-| `/report` + `/reportformat:HTML\|XML\|CSV` | 🔄 Planned |
-| `/compfile` (`.scomp` / `.dcomp`) | 🔄 Planned (exit 10 until a real file is in fixtures) |
-| `/source backup:…` | ❌ Exit 10 — out of scope in v1 |
-| Azure SQL Database | ✅ |
-| Azure SQL Managed Instance | ✅ |
-| SQL Server 2016+ | ✅ |
+| `/schemacompare` compare + script + apply | Complete |
+| `/datacompare` compare + script + apply | Complete |
+| `/source connection:"…"` | Complete |
+| `/source server:… database:… user:… password:…` | Complete |
+| `/argfile` | Complete |
+| `/filter:<.scflt>` (schema) | Complete |
+| `/sync` / `/sync:<file>` | Complete |
+| `/report` + `/reportformat:HTML\|XML\|CSV` | Complete (XLS → exit 10) |
+| `/log` | Complete (passwords redacted) |
+| `/compfile` (`.scomp` / `.dcomp`) | Exit 10 until a real file is in `tests/fixtures/` |
+| `/source backup:…` | Exit 10 — out of scope in v1 |
+| Extra objects on the target (schema drop) | Not dropped (DacFx `DropObjectsNotInSource` stays false) |
+| Azure SQL Database | Supported |
+| Azure SQL Managed Instance | Supported |
+| SQL Server 2016+ | Supported |
 
 ---
 

@@ -158,6 +158,19 @@ public sealed class CliAppTests
     // ─── Custom handler integration ───────────────────────────────────────────
 
     [Fact]
+    public void Quiet_SuppressesSuccessStdout()
+    {
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        var handler = new StubHandler(100, message: "identical");
+        BuildAppWithOutput(handler, stdout, stderr).Run(
+            new[] { "/schemacompare", "/q", "/source", "server:S", "database:D", "/target", "server:T", "database:D2" },
+            "dbforgesql");
+
+        stdout.ToString().Should().BeEmpty();
+    }
+
+    [Fact]
     public void CustomHandler_ReturnsItsExitCode()
     {
         var handler = new StubHandler(100);
@@ -198,18 +211,20 @@ internal sealed class StubHandler : IOperationHandler
 {
     private readonly int _exitCode;
     private readonly Action<CommandRequest>? _onRun;
+    private readonly string? _message;
     public bool WasCalled { get; private set; }
 
-    public StubHandler(int exitCode, Action<CommandRequest>? onRun = null)
+    public StubHandler(int exitCode, Action<CommandRequest>? onRun = null, string? message = null)
     {
         _exitCode = exitCode;
         _onRun = onRun;
+        _message = message;
     }
 
     public OperationResult Run(CommandRequest request)
     {
         WasCalled = true;
         _onRun?.Invoke(request);
-        return new OperationResult(_exitCode);
+        return new OperationResult(_exitCode, _message);
     }
 }

@@ -141,6 +141,9 @@ public static class KnownOptions
         ["fullnames"]                           = "UseSchemaNamePrefix",
         ["reseedidentitycolumns"]               = "ReseedIdentityColumns",
         ["reseed"]                              = "ReseedIdentityColumns",
+        ["roundfloattypes"]                     = "RoundFloatTypes",
+        ["roundfloat"]                          = "RoundFloatTypes",
+        ["toleranceinterval"]                   = "ToleranceInterval",
 
         // ── Report / display options ────────────────────────────────────────────
         // /groupby and /incsettings appear in documented examples; not a compare option.
@@ -196,9 +199,10 @@ public static class KnownOptions
         "DropKeys",
         "DropCheckConstraints",
         "BackupPath",
-        "SynchronizeAsmVioFiles",
+        "SynchronizeAsmViaFiles",
         "VerifyTableData",
         "DeployDatabaseInSingleUserMode",
+        "ToleranceInterval",
     };
 
     /// <summary>

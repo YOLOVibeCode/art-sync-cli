@@ -67,6 +67,24 @@ docker exec -i $(docker compose ps -q sqlserver) \
   < tests/fixtures/setup.sql
 ```
 
+## `/compfile` (`.scomp` / `.dcomp`) — waiting for a real fixture
+
+`/compfile` parsing is intentionally **not implemented**. Both `SchemaOperationHandler` and
+`DataOperationHandler` return exit **10** with a clear message when `/compfile` is supplied.
+
+To unblock a parser, commit a captured `.scomp` or `.dcomp` file here in
+`tests/fixtures/` (e.g. `example.scomp`). The file must come from a real Devart
+dbForge run — do **not** invent XML structure, as the exact element names and
+attribute layout are proprietary.
+
+Once a sample exists in this directory:
+1. Create `src/ArtSync.Compat/CompFileParser.cs` that reads the XML and populates
+   a `CommandRequest` (connections, options, skipped objects list).
+2. Wire it into `SchemaOperationHandler` / `DataOperationHandler` as a pre-step
+   before the `/source`+`/target` validation.
+3. Add an integration test that passes the fixture via `/compfile` and expects
+   the same exit code as when passing source/target directly.
+
 ## Local SQL Server (no Docker)
 
 Set `ARTSYNC_SRC_CS` and `ARTSYNC_TGT_CS` to point at your local instance, then run `setup.sql` against it with any SQL client. The `sa` credentials are only for Docker; adjust for your local auth.

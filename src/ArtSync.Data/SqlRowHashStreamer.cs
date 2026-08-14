@@ -5,111 +5,97 @@ namespace ArtSync.Data;
 
 /// <summary>
 /// Runs a server-side hash query for one table and streams
-/// <c>(pkKey, rowHash)</c> pairs back to the caller.
+/// <c>(pkKey, rowHash, pkValues)</c> pairs back to the caller.
 ///
-/// The hash covers all data columns (excluding identity/rowversion/computed/LOB
-/// unless options say otherwise). Full row data is NEVER fetched — only a
-/// 32-byte SHA2_256 hash per row.
-///
-/// PK key format: PK column values cast to NVARCHAR, joined with FS (CHAR(28)).
-/// Column separator inside the hash payload: FS (CHAR(28)).
-/// NULL sentinel: empty string (NULL treated as '' — v1 limitation when
-/// IsEmptyStringEqualsNull is not explicitly set to 'no').
+/// PK values are returned as native CLR types so DML literals round-trip.
+/// The hash payload uses <see cref="CanonicalPayload.NullSafe"/> so NULL is
+/// distinct from empty string unless <c>IsEmptyStringEqualsNull</c> is on.
 /// </summary>
 internal sealed class SqlRowHashStreamer
 {
-    // Field Separator (FS) — unlikely to appear in real data.
     private const string FsSql = "NCHAR(28)";
 
-    public IEnumerable<(string PkKey, byte[] RowHash, IReadOnlyList<(string Col, string Val)> PkValues)>
+    public IEnumerable<(string PkKey, byte[] RowHash, IReadOnlyList<(string Col, object? Val)> PkValues)>
         Stream(string connectionString, SqlTableInfo table, IReadOnlyDictionary<string, string> options)
     {
         var sql = BuildQuery(table, options);
 
         using var conn = new SqlConnection(connectionString);
         conn.Open();
-        using var cmd = new SqlCommand(sql, conn)
-        {
-            CommandTimeout = 0  // no timeout for large tables
-        };
+        using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 0 };
         using var rdr = cmd.ExecuteReader();
 
         int pkCount = table.PkColumns.Count;
 
         while (rdr.Read())
         {
-            var pkKey = rdr.GetString(0);
+            var pkKey = rdr.IsDBNull(0) ? "" : rdr.GetString(0);
             var hash  = rdr.IsDBNull(1) ? Array.Empty<byte>() : (byte[])rdr[1];
 
-            // Columns 2..n+1 are individual PK string values.
-            var pkValues = new List<(string, string)>(pkCount);
+            var pkValues = new List<(string, object?)>(pkCount);
             for (int i = 0; i < pkCount; i++)
-                pkValues.Add((table.PkColumns[i].Name, rdr.IsDBNull(2 + i) ? "" : rdr.GetString(2 + i)));
+                pkValues.Add((table.PkColumns[i].Name, rdr.IsDBNull(2 + i) ? null : rdr.GetValue(2 + i)));
 
             yield return (pkKey, hash, pkValues);
         }
     }
 
-    // ── Query builder ─────────────────────────────────────────────────────────
-
     private static string BuildQuery(SqlTableInfo table, IReadOnlyDictionary<string, string> options)
     {
-        bool ignoreIdentity  = IsOn(options, "IgnoreIdentityColumns", defaultOn: true);
-        bool ignoreLob       = IsOn(options, "IgnoreLobColumns",       defaultOn: true);
+        bool ignoreIdentity = SqlOptionFlags.IsOn(options, "IgnoreIdentityColumns", defaultOn: true);
+        bool ignoreLob      = SqlOptionFlags.IsOn(options, "IgnoreLobColumns",       defaultOn: true);
+        bool ignoreRowguid  = SqlOptionFlags.IsOn(options, "IgnoreRowguidColumns",   defaultOn: true);
 
-        // ── PK key expression ─────────────────────────────────────────────────
-        var pkKeyParts = table.PkColumns
-            .Select(c => $"CAST({c.QuotedName} AS NVARCHAR(200))");
+        var pkKeyParts = table.PkColumns.Select(c =>
+            CanonicalPayload.NullSafe(
+                CanonicalPayload.BuildExpression(c.QuotedName, c.TypeName.ToLowerInvariant(), options),
+                c.IsNullable,
+                options));
         var pkKeyExpr = string.Join($" + {FsSql} + ", pkKeyParts);
 
-        // ── Hash payload columns ──────────────────────────────────────────────
         var hashCols = table.DataColumns
             .Where(c => !(ignoreIdentity && c.IsIdentity))
             .Where(c => !(ignoreLob      && c.IsLob))
+            .Where(c => !(ignoreRowguid  && c.IsRowguid))
+            .Where(c => !SqlNameMask.IsColumnIgnored(c.Name, options))
+            .Where(c => !SqlDataScripter.IsTemporalSysColumn(c.Name, options))
             .ToList();
 
-        string hashPayload;
+        // Build per-column hash segments. Each column's canonical expression is
+        // hashed independently to 32 bytes (SHA2_256), then those 32-byte digests
+        // are concatenated and hashed again. This avoids the VARBINARY(8000)
+        // truncation that occurs when a single wide row payload exceeds 8000 bytes.
+        string rowHashExpr;
         if (hashCols.Count == 0)
         {
-            hashPayload = "N''";   // all columns excluded — always identical
+            rowHashExpr = "HASHBYTES('SHA2_256', CONVERT(VARBINARY(8000), N''))";
         }
         else
         {
-            var parts = hashCols.Select(c =>
+            var perColHashes = hashCols.Select(c =>
             {
-                var expr = CanonicalPayload.BuildExpression(c.QuotedName, c.TypeName.ToLower(), options);
-                return c.IsNullable
-                    ? $"COALESCE({expr}, N'')"
-                    : expr;
+                var expr = CanonicalPayload.NullSafe(
+                    CanonicalPayload.BuildExpression(c.QuotedName, c.TypeName.ToLowerInvariant(), options, isLob: c.IsLob),
+                    c.IsNullable,
+                    options);
+                // Each column → 32-byte digest; LOB-safe because BuildExpression
+                // already returns a bounded fingerprint for LOB types.
+                return $"HASHBYTES('SHA2_256', CONVERT(VARBINARY(8000), {expr}))";
             });
-            hashPayload = string.Join($" + {FsSql} + ", parts);
+            var combined = string.Join("\n      + ", perColHashes);
+            rowHashExpr = $"HASHBYTES('SHA2_256',\n      {combined})";
         }
 
-        // ── Individual PK columns for RowDiff construction ────────────────────
-        var pkValueCols = table.PkColumns
-            .Select(c => $"CAST({c.QuotedName} AS NVARCHAR(200)) AS {c.QuotedName}")
-            .ToList();
-
-        // ── ORDER BY ──────────────────────────────────────────────────────────
+        var pkValueCols = table.PkColumns.Select(c => c.QuotedName);
         var orderBy = string.Join(", ", table.PkColumns.Select(c => c.QuotedName));
 
         return $"""
             SELECT
                 {pkKeyExpr} AS __PkKey,
-                HASHBYTES('SHA2_256', CONVERT(VARBINARY(8000), {hashPayload})) AS __RowHash,
+                {rowHashExpr} AS __RowHash,
                 {string.Join(",\n        ", pkValueCols)}
             FROM {table.QualifiedName}
             ORDER BY {orderBy}
             """;
-    }
-
-    private static bool IsOn(IReadOnlyDictionary<string, string> opts, string key, bool defaultOn)
-    {
-        if (!opts.TryGetValue(key, out var v)) return defaultOn;
-        return v.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
-               v.Equals("y",   StringComparison.OrdinalIgnoreCase) ||
-               v.Equals("on",  StringComparison.OrdinalIgnoreCase) ||
-               v.Equals("true",StringComparison.OrdinalIgnoreCase) ||
-               v.Equals("t",   StringComparison.OrdinalIgnoreCase);
     }
 }

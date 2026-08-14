@@ -10,20 +10,30 @@ namespace ArtSync.Data;
 public static class CanonicalPayload
 {
     /// <summary>
-    /// Returns the T-SQL sub-expression for one column that can be concatenated
-    /// with <c>'|'</c> separators and hashed server-side.
+    /// Returns the T-SQL sub-expression for one column that will be wrapped in
+    /// <c>HASHBYTES('SHA2_256', CONVERT(VARBINARY(8000), …))</c> by the caller.
+    ///
+    /// For LOB / large-object columns (<paramref name="isLob"/>=<c>true</c>) the
+    /// expression is a bounded fingerprint:
+    ///   <c>CAST(DATALENGTH(col) AS NVARCHAR(20)) + NCHAR(28) + CONVERT(NVARCHAR(4000), col)</c>
+    /// This keeps the VARBINARY(8000) input well below 8 000 bytes while still
+    /// detecting length-only changes and content changes within the first 4 000 chars.
     /// </summary>
     /// <param name="quotedColumnName">e.g. <c>[OrderDate]</c></param>
     /// <param name="sqlTypeLower">Lower-case SQL type name, e.g. <c>datetime2</c></param>
     /// <param name="options">Parsed option bag from the CLI</param>
+    /// <param name="isLob">True when the column is a LOB (text/ntext/image/xml/varchar(MAX)/…)</param>
     public static string BuildExpression(
         string quotedColumnName,
         string sqlTypeLower,
-        IReadOnlyDictionary<string, string> options)
+        IReadOnlyDictionary<string, string> options,
+        bool isLob = false)
     {
-        // ── Columns that must be excluded from the hash ───────────────────────
-        // Callers are responsible for filtering out identity/rowversion/computed/
-        // LOB/rowguid/temporal sys columns before calling this method.
+        // ── LOB fingerprint (safe bounded representation) ─────────────────────
+        // When a column is flagged as LOB and is not ignored by the caller, emit
+        // DATALENGTH + bounded prefix so CONVERT(VARBINARY(8000), …) never truncates.
+        if (isLob)
+            return BuildLobFingerprint(quotedColumnName, sqlTypeLower);
 
         // ── Normalise by type ─────────────────────────────────────────────────
         return sqlTypeLower switch
@@ -74,14 +84,43 @@ public static class CanonicalPayload
             "int" or "bigint" or "smallint" or "tinyint" =>
                 $"CAST({quotedColumnName} AS NVARCHAR(20))",
 
-            // XML: stringify
+            // XML: stringify (bounded via LOB path above when isLob=true)
             "xml" =>
                 $"CAST({quotedColumnName} AS NVARCHAR(MAX))",
+
+            // Spatial: use WKT + SRID fingerprint (safe for VARBINARY(8000))
+            "geography" =>
+                $"ISNULL({quotedColumnName}.STAsText(), N'') + N'|' + CAST(ISNULL({quotedColumnName}.STSrid, 0) AS NVARCHAR(10))",
+
+            "geometry" =>
+                $"ISNULL({quotedColumnName}.STAsText(), N'') + N'|' + CAST(ISNULL({quotedColumnName}.STSrid, 0) AS NVARCHAR(10))",
+
+            "hierarchyid" =>
+                $"CAST({quotedColumnName} AS NVARCHAR(900))",
 
             // Everything else: best-effort cast
             _ => $"CAST({quotedColumnName} AS NVARCHAR(MAX))",
         };
     }
+
+    /// <summary>
+    /// Returns a bounded fingerprint for LOB columns.
+    /// Format: <c>DATALENGTH|first-4000-chars-or-hex-prefix</c>
+    /// Fits well within 8 000 bytes after CONVERT(VARBINARY(8000), …).
+    /// </summary>
+    public static string BuildLobFingerprint(string quotedColumnName, string sqlTypeLower)
+    {
+        // For binary LOBs (image, varbinary(max)) use hex of first 4000 bytes
+        var isBinaryLob = sqlTypeLower is "image" or "varbinary";
+        if (isBinaryLob)
+        {
+            // CONVERT(NVARCHAR(MAX), SUBSTRING(col,1,2000), 2) gives ≤4000 hex chars
+            return $"CAST(DATALENGTH({quotedColumnName}) AS NVARCHAR(20)) + N'|' + ISNULL(CONVERT(NVARCHAR(MAX), SUBSTRING({quotedColumnName}, 1, 2000), 2), N'')";
+        }
+
+        // For text/ntext/nvarchar(max)/xml: first 4000 chars + length
+        return $"CAST(DATALENGTH({quotedColumnName}) AS NVARCHAR(20)) + N'|' + ISNULL(CONVERT(NVARCHAR(4000), {quotedColumnName}), N'')";}
+
 
     /// <summary>
     /// Returns the NULL-safe COALESCE wrapper: if the column is NULL, use a
@@ -133,20 +172,22 @@ public static class CanonicalPayload
     {
         var expr = quotedCol;
 
+        bool ignoreWs = IsOn(options, "IgnoreWhiteSpace");
+
         // Leading-space trim
-        if (IsOn(options, "IgnoreLeadingSpaces"))
+        if (ignoreWs || IsOn(options, "IgnoreLeadingSpaces"))
             expr = $"LTRIM({expr})";
 
         // Trailing-space trim
-        if (IsOn(options, "IgnoreTrailingSpaces"))
+        if (ignoreWs || IsOn(options, "IgnoreTrailingSpaces"))
             expr = $"RTRIM({expr})";
 
         // Collapse internal whitespace (REPLACE multiple spaces with one)
-        if (IsOn(options, "IgnoreInternalSpaces"))
+        if (ignoreWs || IsOn(options, "IgnoreInternalSpaces"))
             expr = $"REPLACE(REPLACE(REPLACE({expr}, N'  ', N' '), N'  ', N' '), N'  ', N' ')";
 
         // Normalise EOL to LF
-        if (IsOn(options, "IgnoreEndOfLine"))
+        if (ignoreWs || IsOn(options, "IgnoreEndOfLine"))
             expr = $"REPLACE(REPLACE({expr}, N'\r\n', N'\n'), N'\r', N'\n')";
 
         // Case: UPPER for case-insensitive comparison

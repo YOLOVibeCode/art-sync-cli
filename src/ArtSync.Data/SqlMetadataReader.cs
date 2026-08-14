@@ -4,104 +4,224 @@ namespace ArtSync.Data;
 
 /// <summary>
 /// Reads table + column metadata from <c>sys.tables</c> / <c>sys.columns</c>.
-/// Only tables that have at least one primary-key column are returned;
-/// heaps without a usable key are silently skipped (per SPEC §10.1 DC-2).
+/// Comparison key is the primary key if present, otherwise the first unique
+/// constraint/index whose columns are all NOT NULL (SPEC §10.1 DC-1).
+/// Heaps with no usable key are returned with an empty <c>PkColumns</c> list
+/// so the caller can skip them with a warning (DC-2).
 /// </summary>
 internal sealed class SqlMetadataReader
 {
-    // Lob types that are skipped from the hash payload in v1.
-    private static readonly HashSet<string> LobTypes = new(StringComparer.OrdinalIgnoreCase)
-        { "text", "ntext", "image", "xml" };
-
-    private const string Query = """
+    private static string BuildColumnQuery(bool fromViews) => fromViews
+        ? """
+        SELECT
+            QUOTENAME(s.name) + N'.' + QUOTENAME(v.name)   AS QualifiedName,
+            c.column_id,
+            c.name                                          AS ColumnName,
+            QUOTENAME(c.name)                               AS QuotedColumnName,
+            TYPE_NAME(c.system_type_id)                     AS TypeName,
+            c.is_nullable,
+            CAST(0 AS BIT)                                  AS is_identity,
+            c.is_computed,
+            CAST(0 AS BIT)                                  AS is_rowguidcol,
+            CAST(0 AS BIT)                                  AS IsTimestamp,
+            CASE WHEN TYPE_NAME(c.system_type_id) IN (N'text', N'ntext', N'image', N'xml')
+                  OR (TYPE_NAME(c.system_type_id) IN (N'varchar', N'nvarchar', N'varbinary')
+                      AND c.max_length = -1)
+                 THEN 1 ELSE 0 END                          AS IsLob,
+            CASE WHEN ik.column_id IS NOT NULL THEN 1 ELSE 0 END AS IsPrimaryKey,
+            ISNULL(ik.key_ordinal, 0)                       AS KeyOrdinal
+        FROM sys.views v
+        JOIN sys.schemas s  ON s.schema_id = v.schema_id
+        JOIN sys.columns c  ON c.object_id = v.object_id
+        LEFT JOIN (
+            SELECT i.object_id, ic.column_id, ic.key_ordinal
+            FROM sys.indexes i
+            JOIN sys.index_columns ic
+                ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+            WHERE i.is_unique = 1
+              AND i.has_filter = 0
+              AND ic.is_included_column = 0
+        ) ik ON ik.object_id = c.object_id AND ik.column_id = c.column_id
+        WHERE v.is_ms_shipped = 0
+        ORDER BY s.name, v.name, c.column_id
+        """
+        : """
         SELECT
             QUOTENAME(s.name) + N'.' + QUOTENAME(t.name)   AS QualifiedName,
             c.column_id,
             c.name                                          AS ColumnName,
             QUOTENAME(c.name)                               AS QuotedColumnName,
-            tp.name                                         AS TypeName,
+            TYPE_NAME(c.system_type_id)                     AS TypeName,
             c.is_nullable,
             c.is_identity,
             c.is_computed,
             c.is_rowguidcol,
-            CASE WHEN tp.name IN ('timestamp','rowversion') THEN 1 ELSE 0 END AS IsTimestamp,
-            CASE WHEN tp.name IN ('text','ntext','image','xml')
-                 OR (tp.name IN ('varchar','nvarchar','varbinary') AND c.max_length = -1)
+            CASE WHEN TYPE_NAME(c.system_type_id) IN (N'timestamp', N'rowversion')
+                 THEN 1 ELSE 0 END                          AS IsTimestamp,
+            CASE WHEN TYPE_NAME(c.system_type_id) IN (N'text', N'ntext', N'image', N'xml')
+                  OR (TYPE_NAME(c.system_type_id) IN (N'varchar', N'nvarchar', N'varbinary')
+                      AND c.max_length = -1)
                  THEN 1 ELSE 0 END                          AS IsLob,
-            CASE WHEN pk.column_id IS NOT NULL THEN 1 ELSE 0 END AS IsPrimaryKey
+            CASE WHEN pk.column_id IS NOT NULL THEN 1 ELSE 0 END AS IsPrimaryKey,
+            ISNULL(pk.key_ordinal, 0)                       AS KeyOrdinal
         FROM sys.tables t
         JOIN sys.schemas s  ON s.schema_id = t.schema_id
         JOIN sys.columns c  ON c.object_id = t.object_id
-        JOIN sys.types   tp ON tp.user_type_id = c.user_type_id
         LEFT JOIN (
-            SELECT i.object_id, ic.column_id
+            SELECT i.object_id, ic.column_id, ic.key_ordinal
             FROM sys.indexes i
             JOIN sys.index_columns ic
                 ON ic.object_id = i.object_id AND ic.index_id = i.index_id
             WHERE i.is_primary_key = 1
+              AND ic.is_included_column = 0
         ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id
         WHERE t.is_ms_shipped = 0
         ORDER BY s.name, t.name, c.column_id
         """;
 
-    /// <summary>
-    /// Returns all tables (with at least one PK column) from the database
-    /// identified by <paramref name="connectionString"/>.
-    /// </summary>
-    public IReadOnlyList<SqlTableInfo> ReadTables(string connectionString)
+    private const string UniqueKeyQuery = """
+        SELECT
+            QUOTENAME(s.name) + N'.' + QUOTENAME(t.name) AS QualifiedName,
+            i.index_id,
+            ic.key_ordinal,
+            c.name AS ColumnName,
+            c.is_nullable
+        FROM sys.tables t
+        JOIN sys.schemas s ON s.schema_id = t.schema_id
+        JOIN sys.indexes i ON i.object_id = t.object_id
+        JOIN sys.index_columns ic
+            ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+        JOIN sys.columns c
+            ON c.object_id = t.object_id AND c.column_id = ic.column_id
+        WHERE t.is_ms_shipped = 0
+          AND i.is_unique = 1
+          AND i.is_primary_key = 0
+          AND i.has_filter = 0
+          AND ic.is_included_column = 0
+        ORDER BY i.index_id, ic.key_ordinal
+        """;
+
+    public IReadOnlyList<SqlTableInfo> ReadTables(
+        string connectionString,
+        bool includeTables = true,
+        bool includeViews = false)
     {
         var rows = new List<(string QualifiedName, SqlColumnInfo Col)>();
+        if (includeTables)
+            rows.AddRange(ReadColumns(connectionString, fromViews: false));
+        if (includeViews)
+            rows.AddRange(ReadColumns(connectionString, fromViews: true));
 
-        using var conn = new SqlConnection(connectionString);
-        conn.Open();
-        using var cmd  = new SqlCommand(Query, conn);
-        using var rdr  = cmd.ExecuteReader();
+        if (rows.Count == 0) return [];
 
-        while (rdr.Read())
-        {
-            bool IsTimestamp = Convert.ToBoolean(rdr["IsTimestamp"]);
-            bool IsLob       = Convert.ToBoolean(rdr["IsLob"]);
-
-            var col = new SqlColumnInfo(
-                ColumnId:    (int)rdr["column_id"],
-                Name:        (string)rdr["ColumnName"],
-                QuotedName:  (string)rdr["QuotedColumnName"],
-                TypeName:    (string)rdr["TypeName"],
-                IsNullable:  Convert.ToBoolean(rdr["is_nullable"]),
-                IsIdentity:  Convert.ToBoolean(rdr["is_identity"]),
-                IsComputed:  Convert.ToBoolean(rdr["is_computed"]),
-                IsRowguid:   Convert.ToBoolean(rdr["is_rowguidcol"]),
-                IsTimestamp: IsTimestamp,
-                IsLob:       IsLob,
-                IsPrimaryKey:Convert.ToBoolean(rdr["IsPrimaryKey"]));
-
-            rows.Add(((string)rdr["QualifiedName"], col));
-        }
+        var uniqueKeys = ReadBestUniqueKeys(connectionString);
 
         return rows
             .GroupBy(r => r.QualifiedName)
-            .Select(g =>
-            {
-                var allCols = g.Select(r => r.Col).ToList();
-                var pkCols  = allCols.Where(c => c.IsPrimaryKey).ToList();
-                if (pkCols.Count == 0) return null;   // skip heaps
-
-                // Data columns: everything that is not a PK, not computed, not rowversion/timestamp.
-                // LOBs are also excluded from hash comparison in v1.
-                var dataCols = allCols
-                    .Where(c => !c.IsPrimaryKey
-                             && !c.IsComputed
-                             && !c.IsTimestamp)
-                    .ToList();
-
-                return new SqlTableInfo(g.Key, pkCols, dataCols);
-            })
-            .Where(t => t is not null)
-            .Select(t => t!)
+            .Select(g => BuildTable(g.Key, g.Select(r => r.Col).ToList(), uniqueKeys))
             .ToList();
     }
 
-    /// <summary>Returns just the qualified table names (for discovery).</summary>
     public IReadOnlyList<string> ReadTableNames(string connectionString)
         => ReadTables(connectionString).Select(t => t.QualifiedName).ToList();
+
+    // ── Internals ─────────────────────────────────────────────────────────────
+
+    private static SqlTableInfo BuildTable(
+        string qualifiedName,
+        List<SqlColumnInfo> allCols,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> uniqueKeys)
+    {
+        var pkCols = allCols
+            .Where(c => c.IsPrimaryKey)
+            .OrderBy(c => c.KeyOrdinal)
+            .ToList();
+
+        if (pkCols.Count == 0
+            && uniqueKeys.TryGetValue(qualifiedName, out var keyNames)
+            && keyNames.Count > 0)
+        {
+            pkCols = keyNames
+                .Select((name, i) =>
+                {
+                    var col = allCols.First(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                    return col with { IsPrimaryKey = true, KeyOrdinal = i + 1 };
+                })
+                .ToList();
+        }
+
+        var pkNames = pkCols.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var dataCols = allCols
+            .Where(c => !pkNames.Contains(c.Name) && !c.IsComputed && !c.IsTimestamp)
+            .ToList();
+
+        return new SqlTableInfo(qualifiedName, pkCols, dataCols);
+    }
+
+    private static List<(string QualifiedName, SqlColumnInfo Col)> ReadColumns(string cs, bool fromViews = false)
+    {
+        var rows = new List<(string QualifiedName, SqlColumnInfo Col)>();
+        using var conn = new SqlConnection(cs);
+        conn.Open();
+        using var cmd = new SqlCommand(BuildColumnQuery(fromViews), conn);
+        using var rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+        {
+            var col = new SqlColumnInfo(
+                ColumnId:     (int)rdr["column_id"],
+                Name:         (string)rdr["ColumnName"],
+                QuotedName:   (string)rdr["QuotedColumnName"],
+                TypeName:     (string)rdr["TypeName"],
+                IsNullable:   Convert.ToBoolean(rdr["is_nullable"]),
+                IsIdentity:   Convert.ToBoolean(rdr["is_identity"]),
+                IsComputed:   Convert.ToBoolean(rdr["is_computed"]),
+                IsRowguid:    Convert.ToBoolean(rdr["is_rowguidcol"]),
+                IsTimestamp:  Convert.ToBoolean(rdr["IsTimestamp"]),
+                IsLob:        Convert.ToBoolean(rdr["IsLob"]),
+                IsPrimaryKey: Convert.ToBoolean(rdr["IsPrimaryKey"]),
+                KeyOrdinal:   Convert.ToInt32(rdr["KeyOrdinal"]));
+            rows.Add(((string)rdr["QualifiedName"], col));
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// For tables without a PK, the unique index/constraint with the fewest
+    /// columns whose members are all NOT NULL.
+    /// </summary>
+    private static Dictionary<string, IReadOnlyList<string>> ReadBestUniqueKeys(string cs)
+    {
+        var raw = new List<(string Table, int IndexId, int Ordinal, string Col, bool Nullable)>();
+        using var conn = new SqlConnection(cs);
+        conn.Open();
+        using var cmd = new SqlCommand(UniqueKeyQuery, conn);
+        using var rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+        {
+            raw.Add((
+                (string)rdr["QualifiedName"],
+                (int)rdr["index_id"],
+                Convert.ToInt32(rdr["key_ordinal"]),
+                (string)rdr["ColumnName"],
+                Convert.ToBoolean(rdr["is_nullable"])));
+        }
+
+        var best = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tableGroup in raw.GroupBy(r => r.Table, StringComparer.OrdinalIgnoreCase))
+        {
+            var candidate = tableGroup
+                .GroupBy(r => r.IndexId)
+                .Select(g => g.OrderBy(x => x.Ordinal).ToList())
+                .Where(cols => cols.All(c => !c.Nullable))
+                .OrderBy(cols => cols.Count)
+                .ThenBy(cols => cols[0].IndexId)
+                .FirstOrDefault();
+
+            if (candidate is { Count: > 0 })
+                best[tableGroup.Key] = candidate.Select(c => c.Col).ToList();
+        }
+
+        return best;
+    }
 }

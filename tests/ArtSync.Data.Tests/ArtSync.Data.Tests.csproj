@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\ArtSync.Abstractions\ArtSync.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\ArtSync.Compat\ArtSync.Compat.csproj" />
     <ProjectReference Include="..\..\src\ArtSync.Data\ArtSync.Data.csproj" />
+    <ProjectReference Include="..\..\src\ArtSync.Reporting\ArtSync.Reporting.csproj" />
   </ItemGroup>
 
 </Project>

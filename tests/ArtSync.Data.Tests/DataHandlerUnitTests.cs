@@ -286,4 +286,6 @@ internal sealed class FakeDataCompare : IDataCompare
     {
         ApplyCalled = true;
     }
+
+    public IReadOnlyList<RowDiff> LastDiffs => _diffs ?? [];
 }

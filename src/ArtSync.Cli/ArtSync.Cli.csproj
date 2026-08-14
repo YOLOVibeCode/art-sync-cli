@@ -5,6 +5,7 @@
     <ProjectReference Include="..\ArtSync.Compat\ArtSync.Compat.csproj" />
     <ProjectReference Include="..\ArtSync.Schema\ArtSync.Schema.csproj" />
     <ProjectReference Include="..\ArtSync.Data\ArtSync.Data.csproj" />
+    <ProjectReference Include="..\ArtSync.Reporting\ArtSync.Reporting.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

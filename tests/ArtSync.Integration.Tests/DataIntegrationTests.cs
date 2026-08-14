@@ -204,4 +204,43 @@ public sealed class DataIntegrationTests
         // Both sides identical → /sync with nothing to do → 112.
         Handler().Run(Request(SyncMode.Apply)).ExitCode.Should().Be(112);
     }
+
+    [IntegrationFact]
+    public void SyncFilePlusReport_WritesReport_AndLeavesTargetUntouched()
+    {
+        TestEnvironment.ExecSrc("""
+            SET IDENTITY_INSERT dbo.Customers ON;
+            INSERT INTO dbo.Customers (CustomerId, Name, Email)
+            VALUES (998, N'Report User', N'report@example.com');
+            SET IDENTITY_INSERT dbo.Customers OFF;
+            """);
+        var report = Path.Combine(Path.GetTempPath(), $"artsync-int-{Guid.NewGuid():N}.html");
+        var script = Path.Combine(Path.GetTempPath(), $"artsync-int-{Guid.NewGuid():N}.sql");
+        var before = TestEnvironment.CountTgt("dbo.Customers");
+        try
+        {
+            var handler = new DataOperationHandler(
+                new SqlDataCompare(),
+                p => ArtSync.Reporting.FileOperationLogger.Open(p),
+                new ArtSync.Reporting.HtmlXmlCsvReporter(new ArtSync.Compat.SecretRedactor()));
+
+            var req = Request(SyncMode.ScriptFile, script) with
+            {
+                ReportPath = report,
+                ReportFormat = "HTML",
+            };
+            var result = handler.Run(req);
+            result.ExitCode.Should().Be(101);
+            File.Exists(report).Should().BeTrue();
+            File.ReadAllText(report).Should().Contain("Customers");
+            File.ReadAllText(script).Should().Contain("998");
+            TestEnvironment.CountTgt("dbo.Customers").Should().Be(before);
+        }
+        finally
+        {
+            TestEnvironment.ExecSrc("DELETE FROM dbo.Customers WHERE CustomerId = 998;");
+            File.Delete(report);
+            File.Delete(script);
+        }
+    }
 }

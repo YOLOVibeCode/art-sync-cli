@@ -34,7 +34,7 @@ public sealed class DacFxSchemaCompare : ISchemaCompare
 
             DacFxOptionMap.Apply(comparison.Options, options);
 
-            return new DacFxSchemaSession(comparison, filter);
+            return new DacFxSchemaSession(comparison, filter, options);
         }
         catch (SchemaFilterException) { throw; }
         catch (Exception ex) when (IsConnectionException(ex))
@@ -62,8 +62,10 @@ public sealed class DacFxSchemaCompare : ISchemaCompare
 
         var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder
         {
-            DataSource = ep.Server,
-            InitialCatalog = ep.Database,
+            DataSource             = ep.Server,
+            InitialCatalog         = ep.Database,
+            Encrypt                = true,
+            TrustServerCertificate = true,
         };
 
         if (!string.IsNullOrEmpty(ep.User))
@@ -97,12 +99,17 @@ internal sealed class DacFxSchemaSession : ISchemaSession
 {
     private readonly SchemaComparison _comparison;
     private readonly ObjectFilterSet? _filter;
+    private readonly IReadOnlyDictionary<string, string> _options;
     private SchemaComparisonResult? _result;
 
-    public DacFxSchemaSession(SchemaComparison comparison, ObjectFilterSet? filter = null)
+    public DacFxSchemaSession(
+        SchemaComparison comparison,
+        ObjectFilterSet? filter = null,
+        IReadOnlyDictionary<string, string>? options = null)
     {
         _comparison = comparison;
         _filter = filter;
+        _options = options ?? new Dictionary<string, string>();
     }
 
     public SchemaCompareInfo Compare()
@@ -131,22 +138,26 @@ internal sealed class DacFxSchemaSession : ISchemaSession
                     Messages: errors);
             }
 
-            // Apply object filter: exclude diffs not matching the filter rules.
-            // DacFx API: call _result.Exclude(diff) to remove a diff from scripting/publish.
-            // diff.Included (read-only) reflects the current exclusion state.
-            if (_filter is not null)
-            {
-                foreach (var diff in _result.Differences)
-                {
-                    if (!diff.IsExcludable) continue;
-                    var typeName = diff.SourceObject?.ObjectType.Name
-                                ?? diff.TargetObject?.ObjectType.Name
-                                ?? string.Empty;
-                    var name = diff.Name ?? string.Empty;
+            // Build set of model type names to exclude based on IgnoreXxx options.
+            var excludedTypes = BuildExcludedTypeNames(_options);
 
-                    if (!_filter.IsIncluded(typeName, name))
-                        _result.Exclude(diff);
+            // Apply object filter and option-based type exclusions.
+            foreach (var diff in _result.Differences)
+            {
+                if (!diff.IsExcludable) continue;
+                var typeName = diff.SourceObject?.ObjectType.Name
+                            ?? diff.TargetObject?.ObjectType.Name
+                            ?? string.Empty;
+                var name = diff.Name ?? string.Empty;
+
+                if (excludedTypes.Contains(typeName))
+                {
+                    _result.Exclude(diff);
+                    continue;
                 }
+
+                if (_filter is not null && !_filter.IsIncluded(typeName, name))
+                    _result.Exclude(diff);
             }
 
             // Count only differences that are still included after filtering.
@@ -214,6 +225,32 @@ internal sealed class DacFxSchemaSession : ISchemaSession
     }
 
     public void Dispose() { }
+
+    /// <summary>
+    /// Maps Devart IgnoreXxx options to DacFx model type names so we can call
+    /// _result.Exclude() for diffs of those types (ExcludeObjectTypes only covers
+    /// top-level objects, not sub-object constraints).
+    /// </summary>
+    private static HashSet<string> BuildExcludedTypeNames(IReadOnlyDictionary<string, string> opts)
+    {
+        var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (IsOn(opts, "IgnoreForeignKeys"))       excluded.Add("ForeignKeyConstraint");
+        if (IsOn(opts, "IgnorePrimaryKeys"))        excluded.Add("PrimaryKeyConstraint");
+        if (IsOn(opts, "IgnoreUniqueKeys"))         excluded.Add("UniqueConstraint");
+        if (IsOn(opts, "IgnoreCheckConstraints"))   excluded.Add("CheckConstraint");
+        if (IsOn(opts, "IgnoreDefaultConstraints")) excluded.Add("DefaultConstraint");
+        return excluded;
+    }
+
+    private static bool IsOn(IReadOnlyDictionary<string, string> opts, string key)
+    {
+        if (!opts.TryGetValue(key, out var v)) return false;
+        return v.Equals("yes", StringComparison.OrdinalIgnoreCase)
+            || v.Equals("y",   StringComparison.OrdinalIgnoreCase)
+            || v.Equals("on",  StringComparison.OrdinalIgnoreCase)
+            || v.Equals("true",StringComparison.OrdinalIgnoreCase)
+            || v.Equals("t",   StringComparison.OrdinalIgnoreCase);
+    }
 
     private void EnsureCompared()
     {

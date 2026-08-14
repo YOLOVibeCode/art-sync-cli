@@ -24,13 +24,16 @@ public sealed class DatabaseResetFixture : IDisposable
 
     // ── Baseline reset ────────────────────────────────────────────────────────
 
-    private static void ResetToBaseline()
+    public static void ResetToBaseline()
     {
         // ── Source ────────────────────────────────────────────────────────────
         ExecSrc("""
-            -- Customers (with explicit CreatedAt so hash matches target)
+            IF OBJECT_ID('dbo.OrderLines') IS NOT NULL DELETE FROM dbo.OrderLines;
             DELETE FROM dbo.Orders;
-            DELETE FROM dbo.AuditLog;
+            IF OBJECT_ID('dbo.AuditLog') IS NOT NULL DELETE FROM dbo.AuditLog;
+            IF OBJECT_ID('dbo.GuidKeys') IS NOT NULL DELETE FROM dbo.GuidKeys;
+            IF OBJECT_ID('dbo.Settings') IS NOT NULL DELETE FROM dbo.Settings;
+            IF OBJECT_ID('dbo.HeapEvents') IS NOT NULL DELETE FROM dbo.HeapEvents;
             DELETE FROM dbo.Customers;
             SET IDENTITY_INSERT dbo.Customers ON;
             INSERT INTO dbo.Customers (CustomerId, Name, Email, CreatedAt) VALUES
@@ -39,7 +42,6 @@ public sealed class DatabaseResetFixture : IDisposable
                 (3, N'Carol Shannon', NULL,                  '2026-01-01 00:00:00.0000000');
             SET IDENTITY_INSERT dbo.Customers OFF;
 
-            -- Products
             DELETE FROM dbo.Products;
             SET IDENTITY_INSERT dbo.Products ON;
             INSERT INTO dbo.Products (ProductId, Sku, Description, Price) VALUES
@@ -48,7 +50,6 @@ public sealed class DatabaseResetFixture : IDisposable
                 (3, N'GADGET-X', NULL,               49.99);
             SET IDENTITY_INSERT dbo.Products OFF;
 
-            -- Orders
             SET IDENTITY_INSERT dbo.Orders ON;
             INSERT INTO dbo.Orders (OrderId, CustomerId, OrderDate, TotalAmount) VALUES
                 (1, 1, '2026-01-10', 9.99),
@@ -56,7 +57,24 @@ public sealed class DatabaseResetFixture : IDisposable
                 (3, 2, '2026-01-20', 49.99);
             SET IDENTITY_INSERT dbo.Orders OFF;
 
-            -- TypeSampler: reset to canonical row
+            IF OBJECT_ID('dbo.OrderLines') IS NOT NULL
+            INSERT INTO dbo.OrderLines (OrderId, [LineNo], Sku, Qty) VALUES
+                (1, 1, N'WIDGET-A', 1),
+                (2, 1, N'WIDGET-A', 1),
+                (2, 2, N'WIDGET-B', 1),
+                (3, 1, N'GADGET-X', 1);
+
+            IF OBJECT_ID('dbo.GuidKeys') IS NOT NULL
+            INSERT INTO dbo.GuidKeys (Id, Label) VALUES
+                ('11111111-1111-1111-1111-111111111111', N'alpha');
+
+            IF OBJECT_ID('dbo.Settings') IS NOT NULL
+            INSERT INTO dbo.Settings (SettingKey, SettingValue) VALUES
+                (N'Theme', N'dark');
+
+            IF OBJECT_ID('dbo.HeapEvents') IS NOT NULL
+            INSERT INTO dbo.HeapEvents (Note) VALUES (N'ignored-heap');
+
             DELETE FROM dbo.TypeSampler;
             SET IDENTITY_INSERT dbo.TypeSampler ON;
             INSERT INTO dbo.TypeSampler (
@@ -81,7 +99,12 @@ public sealed class DatabaseResetFixture : IDisposable
 
         // ── Target (same data, same explicit values) ──────────────────────────
         ExecTgt("""
+            IF OBJECT_ID('dbo.AuditLog') IS NOT NULL DROP TABLE dbo.AuditLog;
+            IF OBJECT_ID('dbo.OrderLines') IS NOT NULL DELETE FROM dbo.OrderLines;
             DELETE FROM dbo.Orders;
+            IF OBJECT_ID('dbo.GuidKeys') IS NOT NULL DELETE FROM dbo.GuidKeys;
+            IF OBJECT_ID('dbo.Settings') IS NOT NULL DELETE FROM dbo.Settings;
+            IF OBJECT_ID('dbo.HeapEvents') IS NOT NULL DELETE FROM dbo.HeapEvents;
             DELETE FROM dbo.Customers;
 
             SET IDENTITY_INSERT dbo.Customers ON;
@@ -106,7 +129,24 @@ public sealed class DatabaseResetFixture : IDisposable
                 (3, 2, '2026-01-20', 49.99);
             SET IDENTITY_INSERT dbo.Orders OFF;
 
-            -- TypeSampler: reset to same canonical row as source
+            IF OBJECT_ID('dbo.OrderLines') IS NOT NULL
+            INSERT INTO dbo.OrderLines (OrderId, [LineNo], Sku, Qty) VALUES
+                (1, 1, N'WIDGET-A', 1),
+                (2, 1, N'WIDGET-A', 1),
+                (2, 2, N'WIDGET-B', 1),
+                (3, 1, N'GADGET-X', 1);
+
+            IF OBJECT_ID('dbo.GuidKeys') IS NOT NULL
+            INSERT INTO dbo.GuidKeys (Id, Label) VALUES
+                ('11111111-1111-1111-1111-111111111111', N'alpha');
+
+            IF OBJECT_ID('dbo.Settings') IS NOT NULL
+            INSERT INTO dbo.Settings (SettingKey, SettingValue) VALUES
+                (N'Theme', N'dark');
+
+            IF OBJECT_ID('dbo.HeapEvents') IS NOT NULL
+            INSERT INTO dbo.HeapEvents (Note) VALUES (N'ignored-heap');
+
             DELETE FROM dbo.TypeSampler;
             SET IDENTITY_INSERT dbo.TypeSampler ON;
             INSERT INTO dbo.TypeSampler (

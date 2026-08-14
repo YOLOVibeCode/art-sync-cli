@@ -95,14 +95,20 @@ internal static class DacFxOptionMap
                     deployOptions.IgnoreDmlTriggerState = on;
                     break;
 
-                // ── No-op: DacFx does not have a direct equivalent ────────────
-                // Accepted by the parser; silently ignored at apply time.
-                case "IgnoreCase":
+                // ── Handled via post-compare _result.Exclude() in DacFxSchemaSession ──
+                // IgnoreForeignKeys / IgnorePrimaryKeys / IgnoreUniqueKeys /
+                // IgnoreCheckConstraints / IgnoreDefaultConstraints are applied
+                // by BuildExcludedTypeNames() after Compare() runs, not here.
                 case "IgnoreForeignKeys":
                 case "IgnorePrimaryKeys":
                 case "IgnoreUniqueKeys":
                 case "IgnoreCheckConstraints":
                 case "IgnoreDefaultConstraints":
+                    break;
+
+                // ── No-op: DacFx does not have a direct equivalent ────────────
+                // Accepted by the parser; silently ignored at apply time.
+                case "IgnoreCase":
                 case "IgnoreIdentity":
                 case "IgnoreWithNocheck":
                 case "IgnoreTSQLtFramework":

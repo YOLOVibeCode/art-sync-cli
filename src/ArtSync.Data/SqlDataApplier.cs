@@ -21,15 +21,18 @@ internal sealed class SqlDataApplier
     {
         if (string.IsNullOrWhiteSpace(script)) return;
 
-        // Split on GO batch separator (common in generated scripts).
         var batches = SplitBatches(script);
+        bool useTran = SqlOptionFlags.IsOn(options, "ExecuteAsSingleTransaction", defaultOn: true);
 
         int attempt = 0;
         while (true)
         {
             try
             {
-                ExecuteBatches(connectionString, batches);
+                if (useTran)
+                    ExecuteBatches(connectionString, batches, transactional: true);
+                else
+                    ExecuteBatches(connectionString, batches, transactional: false);
                 return;
             }
             catch (SqlException ex) when (IsTransient(ex) && attempt < MaxRetries)
@@ -41,25 +44,27 @@ internal sealed class SqlDataApplier
         }
     }
 
-    private static void ExecuteBatches(string cs, IReadOnlyList<string> batches)
+    private static void ExecuteBatches(string cs, IReadOnlyList<string> batches, bool transactional)
     {
         using var conn = new SqlConnection(cs);
         conn.Open();
-        using var tx = conn.BeginTransaction();
+        SqlTransaction? tx = transactional ? conn.BeginTransaction() : null;
         try
         {
             foreach (var batch in batches)
             {
                 if (string.IsNullOrWhiteSpace(batch)) continue;
-                using var cmd = new SqlCommand(batch, conn, tx);
+                using var cmd = tx is null
+                    ? new SqlCommand(batch, conn)
+                    : new SqlCommand(batch, conn, tx);
                 cmd.CommandTimeout = 300;
                 cmd.ExecuteNonQuery();
             }
-            tx.Commit();
+            tx?.Commit();
         }
         catch
         {
-            tx.Rollback();
+            tx?.Rollback();
             throw;
         }
     }

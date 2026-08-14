@@ -24,11 +24,11 @@ Columns: Devart canonical name | DacFx property | Status
 | IgnoreStatistics | istat | `DropStatisticsNotInSource = !value` | ⚠️ partial |
 | IgnoreTableDMLTriggers | itdmltrig | `IgnoreDmlTriggerOrder` + `IgnoreDmlTriggerState` | ⚠️ partial |
 | IgnoreCase | icase | — | ⚠️ no-op (DacFx names are case-insensitive by default; body comparison ignores case via SQL Server collation) |
-| IgnoreForeignKeys | ifk | — | ⚠️ no-op (no DacFx deployment option; FKs are always compared by default) |
-| IgnorePrimaryKeys | ipk | — | ⚠️ no-op |
-| IgnoreUniqueKeys | iuk | — | ⚠️ no-op |
-| IgnoreCheckConstraints | icheck | — | ⚠️ no-op |
-| IgnoreDefaultConstraints | idefault | — | ⚠️ no-op |
+| IgnoreForeignKeys | ifk | post-compare `_result.Exclude` of `ForeignKeyConstraint` | ✅ mapped |
+| IgnorePrimaryKeys | ipk | post-compare exclude `PrimaryKeyConstraint` | ✅ mapped |
+| IgnoreUniqueKeys | iuk | post-compare exclude `UniqueConstraint` | ✅ mapped |
+| IgnoreCheckConstraints | icheck | post-compare exclude `CheckConstraint` | ✅ mapped |
+| IgnoreDefaultConstraints | idefault | post-compare exclude `DefaultConstraint` | ✅ mapped |
 | IgnoreIdentity | iidentity | — | ⚠️ no-op |
 | IgnoreWithNocheck | iwnocheck | — | ⚠️ no-op |
 | IgnoreTSQLtFramework | itsqlt | — | ⚠️ no-op |
@@ -44,9 +44,11 @@ Columns: Devart canonical name | DacFx property | Status
 
 ## Known gaps
 
-- **IgnoreForeignKeys** — Devart can skip FK diffs; DacFx always includes FKs.  If a job uses this flag and FK diffs are visible, a captured `.scomp` file or a custom ExcludedObjects list would be needed.
-- **IgnorePrimaryKeys / IgnoreUniqueKeys / IgnoreCheckConstraints / IgnoreDefaultConstraints** — No DacFx option.  These object types are always compared.
+- **IgnoreIndexes** — DacFx has no single "ignore all indexes" toggle; only index options/padding are suppressed. Index *objects* still appear as diffs.
+- **IgnoreIdentity** — DacFx has no toggle to ignore the IDENTITY property itself (seed/increment is mapped separately).
 - **ExecuteAsSingleTransaction** — DacFx wraps apply scripts in its own transaction model; there is no user-exposed single-transaction toggle.
+- **DropObjectsNotInSource** — remains **false**. Extra tables on the target are not dropped unless a future explicit flag is added. This is intentional: enabling drop-by-default is unsafe for a drop-in scheduler replacement.
+- **`/compfile` (`.scomp` / `.dcomp`)** — exit 10 until a captured fixture exists. Do not invent XML.
 
 ## Options that always exit 10 in v1
 

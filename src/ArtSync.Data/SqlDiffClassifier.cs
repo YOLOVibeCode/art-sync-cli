@@ -5,43 +5,34 @@ namespace ArtSync.Data;
 /// <summary>
 /// Pure in-memory comparison of two hash-stream results.
 /// Loads both sides into dictionaries keyed by PkKey, then classifies each row.
-/// No SQL is executed here.
 /// </summary>
 internal sealed class SqlDiffClassifier
 {
     public IReadOnlyList<RowDiff> Classify(
         string tableName,
-        IEnumerable<(string PkKey, byte[] RowHash, IReadOnlyList<(string Col, string Val)> PkValues)> source,
-        IEnumerable<(string PkKey, byte[] RowHash, IReadOnlyList<(string Col, string Val)> PkValues)> target)
+        IEnumerable<(string PkKey, byte[] RowHash, IReadOnlyList<(string Col, object? Val)> PkValues)> source,
+        IEnumerable<(string PkKey, byte[] RowHash, IReadOnlyList<(string Col, object? Val)> PkValues)> target)
     {
-        // Load into dictionaries — O(n) memory, acceptable for v1.
-        var srcDict = new Dictionary<string, (byte[] Hash, IReadOnlyList<(string, string)> Pk)>(
+        var srcDict = new Dictionary<string, (byte[] Hash, IReadOnlyList<(string, object?)> Pk)>(
             StringComparer.Ordinal);
         foreach (var row in source)
             srcDict[row.PkKey] = (row.RowHash, row.PkValues);
 
-        var tgtDict = new Dictionary<string, (byte[] Hash, IReadOnlyList<(string, string)> Pk)>(
+        var tgtDict = new Dictionary<string, (byte[] Hash, IReadOnlyList<(string, object?)> Pk)>(
             StringComparer.Ordinal);
         foreach (var row in target)
             tgtDict[row.PkKey] = (row.RowHash, row.PkValues);
 
         var diffs = new List<RowDiff>();
 
-        // Rows in source
         foreach (var (pkKey, (srcHash, pkVals)) in srcDict)
         {
             if (!tgtDict.TryGetValue(pkKey, out var tgtEntry))
-            {
                 diffs.Add(new RowDiff(tableName, RowDiffKind.OnlyInSource, ToPkList(pkVals)));
-            }
             else if (!srcHash.SequenceEqual(tgtEntry.Hash))
-            {
                 diffs.Add(new RowDiff(tableName, RowDiffKind.Different, ToPkList(pkVals)));
-            }
-            // else: Identical — no diff entry
         }
 
-        // Rows only in target
         foreach (var (pkKey, (_, pkVals)) in tgtDict)
         {
             if (!srcDict.ContainsKey(pkKey))
@@ -52,6 +43,6 @@ internal sealed class SqlDiffClassifier
     }
 
     private static IReadOnlyList<(string Column, object? Value)> ToPkList(
-        IReadOnlyList<(string Col, string Val)> pkVals)
-        => pkVals.Select(p => (p.Col, (object?)p.Val)).ToList();
+        IReadOnlyList<(string Col, object? Val)> pkVals)
+        => pkVals.Select(p => (p.Col, p.Val)).ToList();
 }

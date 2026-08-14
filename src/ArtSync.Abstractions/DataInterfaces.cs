@@ -133,6 +133,12 @@ public interface IDataCompare
         Endpoint target,
         string script,
         IReadOnlyDictionary<string, string> options);
+
+    /// <summary>
+    /// Row diffs from the most recent <see cref="Compare"/> call.
+    /// Empty before the first compare. Used by reports (SPEC DC-8).
+    /// </summary>
+    IReadOnlyList<RowDiff> LastDiffs { get; }
 }
 
 /// <summary>

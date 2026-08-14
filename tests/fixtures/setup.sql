@@ -44,6 +44,32 @@ CREATE TABLE dbo.Orders (
     TotalAmount  DECIMAL(18,2)  NOT NULL
 );
 
+-- Composite PK + child FK (full-sync coverage)
+CREATE TABLE dbo.OrderLines (
+    OrderId INT           NOT NULL,
+    [LineNo] INT          NOT NULL,
+    Sku     NVARCHAR(50)  NOT NULL,
+    Qty     INT           NOT NULL,
+    CONSTRAINT PK_OrderLines PRIMARY KEY (OrderId, [LineNo]),
+    CONSTRAINT FK_OrderLines_Orders FOREIGN KEY (OrderId) REFERENCES dbo.Orders(OrderId)
+);
+
+CREATE TABLE dbo.GuidKeys (
+    Id    UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+    Label NVARCHAR(100)    NOT NULL
+);
+
+-- Unique constraint, no PK (SPEC DC-1 fallback)
+CREATE TABLE dbo.Settings (
+    SettingKey   NVARCHAR(50)  NOT NULL UNIQUE,
+    SettingValue NVARCHAR(200) NULL
+);
+
+-- Heap with no usable key (SPEC DC-2 skip)
+CREATE TABLE dbo.HeapEvents (
+    Note NVARCHAR(100) NOT NULL
+);
+
 -- Extra table that only exists in source (used for schema-diff tests)
 CREATE TABLE dbo.AuditLog (
     EventId      BIGINT         NOT NULL PRIMARY KEY IDENTITY(1,1),
@@ -68,6 +94,21 @@ INSERT INTO dbo.Orders (CustomerId, OrderDate, TotalAmount) VALUES
     (1, '2026-01-10', 9.99),
     (1, '2026-02-14', 34.98),
     (2, '2026-01-20', 49.99);
+
+INSERT INTO dbo.OrderLines (OrderId, [LineNo], Sku, Qty) VALUES
+    (1, 1, N'WIDGET-A', 1),
+    (2, 1, N'WIDGET-A', 1),
+    (2, 2, N'WIDGET-B', 1),
+    (3, 1, N'GADGET-X', 1);
+
+INSERT INTO dbo.GuidKeys (Id, Label) VALUES
+    ('11111111-1111-1111-1111-111111111111', N'alpha');
+
+INSERT INTO dbo.Settings (SettingKey, SettingValue) VALUES
+    (N'Theme', N'dark');
+
+INSERT INTO dbo.HeapEvents (Note) VALUES
+    (N'ignored-heap');
 GO
 
 
@@ -109,6 +150,29 @@ CREATE TABLE dbo.Orders (
     OrderDate    DATE           NOT NULL,
     TotalAmount  DECIMAL(18,2)  NOT NULL
 );
+
+CREATE TABLE dbo.OrderLines (
+    OrderId INT           NOT NULL,
+    [LineNo] INT          NOT NULL,
+    Sku     NVARCHAR(50)  NOT NULL,
+    Qty     INT           NOT NULL,
+    CONSTRAINT PK_OrderLines PRIMARY KEY (OrderId, [LineNo]),
+    CONSTRAINT FK_OrderLines_Orders FOREIGN KEY (OrderId) REFERENCES dbo.Orders(OrderId)
+);
+
+CREATE TABLE dbo.GuidKeys (
+    Id    UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+    Label NVARCHAR(100)    NOT NULL
+);
+
+CREATE TABLE dbo.Settings (
+    SettingKey   NVARCHAR(50)  NOT NULL UNIQUE,
+    SettingValue NVARCHAR(200) NULL
+);
+
+CREATE TABLE dbo.HeapEvents (
+    Note NVARCHAR(100) NOT NULL
+);
 GO
 
 -- Seed target with SAME data as source (so data tests start from identical state).
@@ -134,6 +198,21 @@ INSERT INTO dbo.Orders (OrderId, CustomerId, OrderDate, TotalAmount) VALUES
     (2, 1, '2026-02-14', 34.98),
     (3, 2, '2026-01-20', 49.99);
 SET IDENTITY_INSERT dbo.Orders OFF;
+
+INSERT INTO dbo.OrderLines (OrderId, [LineNo], Sku, Qty) VALUES
+    (1, 1, N'WIDGET-A', 1),
+    (2, 1, N'WIDGET-A', 1),
+    (2, 2, N'WIDGET-B', 1),
+    (3, 1, N'GADGET-X', 1);
+
+INSERT INTO dbo.GuidKeys (Id, Label) VALUES
+    ('11111111-1111-1111-1111-111111111111', N'alpha');
+
+INSERT INTO dbo.Settings (SettingKey, SettingValue) VALUES
+    (N'Theme', N'dark');
+
+INSERT INTO dbo.HeapEvents (Note) VALUES
+    (N'ignored-heap');
 GO
 
 -- Fix the source Customers seed too — use same explicit CreatedAt values.

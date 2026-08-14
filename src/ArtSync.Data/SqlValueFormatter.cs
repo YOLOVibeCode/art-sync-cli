@@ -18,8 +18,10 @@ namespace ArtSync.Data;
 ///   <item><term>time</term><description>TimeSpan</description></item>
 ///   <item><term>datetimeoffset</term><description>DateTimeOffset</description></item>
 ///   <item><term>char / varchar / nchar / nvarchar / text / ntext / xml</term><description>String</description></item>
-///   <item><term>binary / varbinary</term><description>byte[]</description></item>
+///   <item><term>binary / varbinary / image</term><description>byte[]</description></item>
 ///   <item><term>uniqueidentifier</term><description>Guid</description></item>
+///   <item><term>geography / geometry</term><description>byte[] (binary Serialize() form via SELECT col.Serialize())</description></item>
+///   <item><term>hierarchyid</term><description>String from CAST(col AS NVARCHAR(900))</description></item>
 /// </list>
 /// </summary>
 public static class SqlValueFormatter
@@ -86,10 +88,27 @@ public static class SqlValueFormatter
                     : $"'{value}'",
 
             // ── Binary types — 0xHEX unquoted ────────────────────────────────
-            "binary" or "varbinary" =>
+            "binary" or "varbinary" or "image" =>
                 value is byte[] ba
                     ? (ba.Length == 0 ? "0x" : $"0x{Convert.ToHexString(ba)}")
                     : "NULL",
+
+            // ── Spatial types — geography::Deserialize / geometry::Deserialize ──
+            // FetchRows should SELECT col.Serialize() AS col_Bytes; the reader
+            // returns byte[].  Fall back to N'NULL' if not binary.
+            "geography" =>
+                value is byte[] gba
+                    ? $"geography::Deserialize(0x{Convert.ToHexString(gba)})"
+                    : "NULL",
+
+            "geometry" =>
+                value is byte[] gmba
+                    ? $"geometry::Deserialize(0x{Convert.ToHexString(gmba)})"
+                    : "NULL",
+
+            // ── hierarchyid — CAST string literal ────────────────────────────
+            "hierarchyid" =>
+                $"CAST(N'{EscapeString(Convert.ToString(value, CultureInfo.InvariantCulture) ?? "")}' AS hierarchyid)",
 
             // ── GUID — quoted, braces stripped ───────────────────────────────
             "uniqueidentifier" =>

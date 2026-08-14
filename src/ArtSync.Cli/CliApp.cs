@@ -37,10 +37,19 @@ public sealed class CliApp
         var loader = new ArgFileLoader();
         var parser = new ArgvParser(loader);
 
+        var redactor = new SecretRedactor();
+        ArtSync.Abstractions.IOperationLogger LoggerFactory(string path)
+            => ArtSync.Reporting.FileOperationLogger.Open(path, redactor);
+        var reporter = new ArtSync.Reporting.HtmlXmlCsvReporter(redactor);
+
         var schemaHandler = new ArtSync.Schema.SchemaOperationHandler(
-            new ArtSync.Schema.DacFxSchemaCompare());
+            new ArtSync.Schema.DacFxSchemaCompare(),
+            LoggerFactory,
+            reporter);
         var dataHandler = new ArtSync.Data.DataOperationHandler(
-            new ArtSync.Data.SqlDataCompare());
+            new ArtSync.Data.SqlDataCompare(),
+            LoggerFactory,
+            reporter);
 
         var dispatcher = new DispatchingHandler(schemaHandler, dataHandler);
         return new CliApp(parser, dispatcher);
@@ -61,9 +70,11 @@ public sealed class CliApp
 
         var req = ((ParseResult.Success)result).Request;
 
-        // Emit any parser warnings before doing anything else.
-        foreach (var w in req.Warnings)
-            _err.WriteLine($"Warning: {w}");
+        if (!req.Quiet)
+        {
+            foreach (var w in req.Warnings)
+                _err.WriteLine($"Warning: {w}");
+        }
 
         return req.Operation switch
         {
@@ -104,7 +115,13 @@ public sealed class CliApp
             var opResult = _handler.Run(req);
             if (opResult.Message is { Length: > 0 } msg)
             {
-                if (opResult.ExitCode == 0 || opResult.ExitCode == 100 || opResult.ExitCode == 101)
+                bool success = opResult.ExitCode is 0 or 100 or 101;
+                if (req.Quiet)
+                {
+                    if (!success)
+                        _err.WriteLine($"Error: {msg}");
+                }
+                else if (success)
                     _out.WriteLine(msg);
                 else
                     _err.WriteLine($"Error: {msg}");

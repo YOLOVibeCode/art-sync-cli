@@ -187,8 +187,40 @@ public sealed class CanonicalPayloadTests
     [Fact]
     public void UnknownType_FallsBackToNVarcharMax()
     {
-        var expr = CanonicalPayload.BuildExpression("[Col]", "geography", NoOpts);
+        var expr = CanonicalPayload.BuildExpression("[Col]", "sql_variant", NoOpts);
         expr.Should().Contain("NVARCHAR(MAX)");
+    }
+
+    // ── Spatial types ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Geography_UsesST()
+    {
+        var expr = CanonicalPayload.BuildExpression("[Loc]", "geography", NoOpts);
+        expr.Should().Contain("STAsText").And.Contain("STSrid");
+    }
+
+    [Fact]
+    public void Geometry_UsesST()
+    {
+        var expr = CanonicalPayload.BuildExpression("[Shape]", "geometry", NoOpts);
+        expr.Should().Contain("STAsText").And.Contain("STSrid");
+    }
+
+    [Fact]
+    public void Hierarchyid_CastsToNVarchar()
+    {
+        var expr = CanonicalPayload.BuildExpression("[Path]", "hierarchyid", NoOpts);
+        expr.Should().Contain("NVARCHAR(900)");
+    }
+
+    // ── LOB fingerprint ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void LobColumn_ReturnsFingerprint()
+    {
+        var expr = CanonicalPayload.BuildExpression("[Body]", "nvarchar", NoOpts, isLob: true);
+        expr.Should().Contain("DATALENGTH").And.Contain("ISNULL");
     }
 
     // ── NULL-safe wrapper ─────────────────────────────────────────────────────
