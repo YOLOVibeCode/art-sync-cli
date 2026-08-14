@@ -1,0 +1,61 @@
+# .NET build outputs
+bin/
+obj/
+out/
+publish/
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+# Cursor IDE
+.cursor/
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage/
+lcov.info
+
+# Publish output (multi-name exe copies)
+publish/
+
+# Secrets / environment
+.env
+.env.*
+*.secret
+secrets.json
+appsettings.Development.json
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Argfiles that may contain passwords (keep sample/ fixtures, not real ones)
+*.argfile

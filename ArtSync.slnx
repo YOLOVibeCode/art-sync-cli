@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ArtSync.Abstractions/ArtSync.Abstractions.csproj" />
+    <Project Path="src/ArtSync.Cli/ArtSync.Cli.csproj" />
+    <Project Path="src/ArtSync.Compat/ArtSync.Compat.csproj" />
+    <Project Path="src/ArtSync.Data/ArtSync.Data.csproj" />
+    <Project Path="src/ArtSync.Reporting/ArtSync.Reporting.csproj" />
+    <Project Path="src/ArtSync.Schema/ArtSync.Schema.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ArtSync.Cli.Tests/ArtSync.Cli.Tests.csproj" />
+    <Project Path="tests/ArtSync.Compat.Tests/ArtSync.Compat.Tests.csproj" />
+    <Project Path="tests/ArtSync.Data.Tests/ArtSync.Data.Tests.csproj" />
+    <Project Path="tests/ArtSync.Schema.Tests/ArtSync.Schema.Tests.csproj" />
+  </Folder>
+</Solution>

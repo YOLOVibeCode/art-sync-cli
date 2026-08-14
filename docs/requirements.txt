@@ -1,0 +1,70 @@
+I have an Azure Sync job that syncs an on-prem database to an Azure database. It's something that's critical that I kind of want to get rid of, but do I have an open source tool that does that? It does schema, and it does data, and it is a one-way sync, but sometimes I want it to be a two-way sync. What tools do I have at my disposal, especially open source ones that are free?
+
+Evaluating SymmetricDS as primary open source alternative
+Evaluating SymmetricDS as primary open source alternative
+
+Short version: the bidirectional requirement is what kills most of your options. One-way SQL Server → Azure SQL has a dozen good answers; two-way has basically one open-source answer.
+
+For context on urgency: SQL Data Sync retires 30 September 2027, and Microsoft's own migration guidance points at Azure Data Factory, Azure Functions, linked servers, read replicas, or transactional replication — all one-way. 
+Microsoft Learn
+microsoft
+
+The one that actually matches your use case
+
+SymmetricDS (GPL, JumpMind). Java-based, database-agnostic, designed specifically for bi-directional replication with conflict resolution, and built to tolerate WAN latency and intermittent connectivity. SQL Server including Azure is supported. It's trigger-based CDC — architecturally the same trick Data Sync uses, so the performance profile and the metadata-table sprawl will feel familiar. It also does DDL/schema replication and initial load, so it covers your "schema + data" requirement. Free edition is fully functional; Pro adds a web console, clustering, and bulk-load. There are writeups of exactly your topology — one SQL Server on-prem, one in Azure, bidirectional. 
+GitHub + 2
+
+One-way only, if you can split the problem
+
+Debezium + Kafka Connect (Apache 2.0) — reads the SQL Server transaction log via native CDC instead of triggers, so no write amplification on your OLTP tables. Much cleaner than SymmetricDS for one-way, but you're now running Kafka.
+Airbyte (self-hosted, free) — MSSQL CDC source, schema propagation built in. Batch-ish, lower ceremony than Debezium.
+SQL Server transactional replication — not open source but free with your existing license. Azure SQL DB can be a push subscriber. Lowest-effort, most boring, most supported path for the one-way portion.
+
+A pragmatic suggestion
+
+Before you commit to SymmetricDS, interrogate the "sometimes I want two-way" part. In most systems that phrase means a specific small set of tables is written on both ends, not the whole schema. If that's true here, the cleanest architecture is transactional replication or Debezium for the bulk one-way flow, plus a narrow purpose-built path for the handful of genuinely bidirectional tables — a small .NET service on Change Tracking would do it, and given your stack you'd have it running in a weekend. That avoids inheriting a second trigger-based sync framework you'll be maintaining for years.
+
+Full multi-master with automatic conflict resolution is genuinely hard to operate and you only want to sign up for it if you actually need it.
+
+I especially like DevArts, DataSync and SchemaSync. That's what we have active, and because it has CLI, it's very easy to implement. Maybe we can use a drop-in replacement to replace that CLI?
+
+Identified schema comparison alternatives and pinpointed data comparison gap
+Identified schema comparison alternatives and pinpointed data comparison gap
+
+Honest answer up front: schema has a genuine free drop-in; data does not.
+
+Schema Compare → SqlPackage (real replacement)
+
+sqlpackage is Microsoft's free, cross-platform .NET CLI tool. Install: dotnet tool install -g microsoft.sqlpackage.
+
+bash
+# extract on-prem to a dacpac
+sqlpackage /a:Extract /scs:"..." /tf:onprem.dacpac
+# script the diff (dry run)
+sqlpackage /a:Script /sf:onprem.dacpac /tcs:"...azure..." /op:diff.sql
+# apply
+sqlpackage /a:Publish /sf:onprem.dacpac /tcs:"...azure..."
+
+Two things that make it a clean swap for dbForge Schema Compare CLI:
+
+Publish and Script actions accept .scmp comparison files, letting you exclude specific objects rather than syncing everything — that's your equivalent of dbForge's saved comparison config. 
+Microsoft Learn
+Microsoft.Build.Sql (the SDK-style SQL project system) is GA and developed openly on GitHub, so .sqlproj → dacpac → publish is a fully scriptable, source-controlled pipeline. Also the MSSQL extension for VS Code now has a graphical Schema Compare if you want a GUI for eyeballing diffs before automating. 
+Microsoft Community Hub
+Microsoft Learn
+
+SqlPackage itself is free-to-use Microsoft-licensed, not OSS — but it's first-party, supported, runs on Linux, and costs nothing.
+
+Data Compare → no open-source equivalent exists
+
+I looked, and the differential data-compare-and-sync space for SQL Server is entirely proprietary — Devart, Redgate SQL Data Compare, ApexSQL Data Diff, CompareData. There's no sqlpackage-for-data. Your realistic paths: 
+alternativeto
+
+Keep the Devart Data Compare license, drop Schema Compare. Cheapest by far in effort. You've already got working CLI invocations.
+Roll it yourself. For a .NET shop this is genuinely small: HASHBYTES over a row's columns → hash comparison by PK → generate MERGE. A few hundred lines, gives you exact control over conflict rules, and you own it forever. Given you're already building tooling, this is probably the one you'd actually enjoy.
+SymmetricDS — but note it's a different paradigm, not a drop-in. Continuous trigger-based CDC rather than scheduled batch compare. It replaces both Devart tools and your Azure Sync job at once, which is either elegant or a bigger migration than you want.
+What I'd suggest
+
+Split it: sqlpackage for schema (free, first-party, better CI story than Devart), plus a small hash+MERGE utility for the data. That gets you off both Devart and Data Sync, and the bidirectional case becomes just "run the differ in the other direction on a different table list" — which is much easier to reason about than true multi-master conflict resolution.
+
+So I need to fully implement the DevArt CLI. That way, this is going to be a drop-in replacement, then I need proposals on what I need to do to actually create as much of an open-source replication of it. It must be as versatile, and it must be able to do two-way or one-way sync.
