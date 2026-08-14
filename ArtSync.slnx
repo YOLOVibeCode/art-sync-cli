@@ -11,6 +11,7 @@
     <Project Path="tests/ArtSync.Cli.Tests/ArtSync.Cli.Tests.csproj" />
     <Project Path="tests/ArtSync.Compat.Tests/ArtSync.Compat.Tests.csproj" />
     <Project Path="tests/ArtSync.Data.Tests/ArtSync.Data.Tests.csproj" />
+    <Project Path="tests/ArtSync.Integration.Tests/ArtSync.Integration.Tests.csproj" />
     <Project Path="tests/ArtSync.Schema.Tests/ArtSync.Schema.Tests.csproj" />
   </Folder>
 </Solution>

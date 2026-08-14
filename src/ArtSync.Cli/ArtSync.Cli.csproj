@@ -4,6 +4,7 @@
     <ProjectReference Include="..\ArtSync.Abstractions\ArtSync.Abstractions.csproj" />
     <ProjectReference Include="..\ArtSync.Compat\ArtSync.Compat.csproj" />
     <ProjectReference Include="..\ArtSync.Schema\ArtSync.Schema.csproj" />
+    <ProjectReference Include="..\ArtSync.Data\ArtSync.Data.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -39,7 +39,8 @@ public sealed class CliApp
 
         var schemaHandler = new ArtSync.Schema.SchemaOperationHandler(
             new ArtSync.Schema.DacFxSchemaCompare());
-        var dataHandler = new NotImplementedHandler();
+        var dataHandler = new ArtSync.Data.DataOperationHandler(
+            new ArtSync.Data.SqlDataCompare());
 
         var dispatcher = new DispatchingHandler(schemaHandler, dataHandler);
         return new CliApp(parser, dispatcher);
