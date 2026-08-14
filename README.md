@@ -1,5 +1,7 @@
 # ArtSync
 
+> Developed by **[YOLOVibeCode](https://github.com/YOLOVibeCode)**, a subsidiary of **Noxirsoft**.
+
 A free, open-source drop-in replacement for the Devart dbForge Schema Compare and Data Compare CLI tools (`schemacompare.com`, `datacompare.com`, `dbforgesql.com`).
 
 ArtSync accepts the same command-line grammar as Devart, emits the same exit codes, and performs one-way source→target schema and data synchronization — without a Devart license.
@@ -139,6 +141,12 @@ All engine code sits behind thin interfaces. `ArtSync.Cli` depends only on `IArg
 - **ArtSync source** — [MIT](LICENSE)
 - **Microsoft.SqlServer.DacFx** — Microsoft EULA (free to use, not OSS). Included as a NuGet dependency.
 - **Microsoft.Data.SqlClient** — MIT
+
+---
+
+## About
+
+ArtSync is a project by **YOLOVibeCode**, a subsidiary of **Noxirsoft**.
 
 ---
 
