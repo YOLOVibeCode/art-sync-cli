@@ -113,7 +113,7 @@ internal sealed class SqlDataScripter
             var pkCol = tableInfo.PkColumns[0];
             var values = diffs
                 .Select(d => d.PkValues.FirstOrDefault(p => p.Column == pkCol.Name).Value?.ToString() ?? "NULL")
-                .Select(v => SqlLiteral(v, pkCol.TypeName));
+                .Select(v => SqlValueFormatter.Format(v, pkCol.TypeName));
             sb.Append($"{pkCol.QuotedName} IN ({string.Join(", ", values)})");
         }
         else
@@ -123,7 +123,7 @@ internal sealed class SqlDataScripter
                 var clauses = tableInfo.PkColumns.Select(pkCol =>
                 {
                     var val = d.PkValues.FirstOrDefault(p => p.Column == pkCol.Name).Value?.ToString() ?? "NULL";
-                    return $"{pkCol.QuotedName} = {SqlLiteral(val, pkCol.TypeName)}";
+                    return $"{pkCol.QuotedName} = {SqlValueFormatter.Format(val, pkCol.TypeName)}";
                 });
                 return $"({string.Join(" AND ", clauses)})";
             });
@@ -157,7 +157,7 @@ internal sealed class SqlDataScripter
         var allCols = tableInfo.PkColumns.Concat(tableInfo.DataColumns).ToList();
         var colNames = string.Join(", ", allCols.Select(c => c.QuotedName));
         var values   = string.Join(", ", allCols.Select(c =>
-            row.TryGetValue(c.Name, out var v) ? ToSqlValue(v, c.TypeName) : "NULL"));
+            row.TryGetValue(c.Name, out var v) ? SqlValueFormatter.Format(v, c.TypeName) : "NULL"));
 
         return $"INSERT INTO {tableInfo.QualifiedName} ({colNames}) VALUES ({values});";
     }
@@ -168,10 +168,10 @@ internal sealed class SqlDataScripter
     {
         var setClauses = tableInfo.DataColumns
             .Where(c => !c.IsIdentity && !c.IsComputed && !c.IsTimestamp)
-            .Select(c => $"{c.QuotedName} = {(row.TryGetValue(c.Name, out var v) ? ToSqlValue(v, c.TypeName) : "NULL")}");
+            .Select(c => $"{c.QuotedName} = {(row.TryGetValue(c.Name, out var v) ? SqlValueFormatter.Format(v, c.TypeName) : "NULL")}");
 
         var whereClauses = tableInfo.PkColumns
-            .Select(c => $"{c.QuotedName} = {(row.TryGetValue(c.Name, out var v) ? ToSqlValue(v, c.TypeName) : "NULL")}");
+            .Select(c => $"{c.QuotedName} = {(row.TryGetValue(c.Name, out var v) ? SqlValueFormatter.Format(v, c.TypeName) : "NULL")}");
 
         return $"UPDATE {tableInfo.QualifiedName} SET {string.Join(", ", setClauses)} " +
                $"WHERE {string.Join(" AND ", whereClauses)};";
@@ -182,45 +182,11 @@ internal sealed class SqlDataScripter
         var whereClauses = tableInfo.PkColumns.Select(pkCol =>
         {
             var val = diff.PkValues.FirstOrDefault(p => p.Column == pkCol.Name).Value?.ToString() ?? "NULL";
-            return $"{pkCol.QuotedName} = {SqlLiteral(val, pkCol.TypeName)}";
+            return $"{pkCol.QuotedName} = {SqlValueFormatter.Format(val, pkCol.TypeName)}";
         });
 
         return $"DELETE FROM {tableInfo.QualifiedName} WHERE {string.Join(" AND ", whereClauses)};";
     }
 
-    // ── SQL value helpers ─────────────────────────────────────────────────────
-
-    private static string ToSqlValue(object? value, string typeName)
-    {
-        if (value is null or DBNull) return "NULL";
-
-        return typeName.ToLower() switch
-        {
-            "int" or "bigint" or "smallint" or "tinyint" or "bit" =>
-                Convert.ToString(value) ?? "NULL",
-            "decimal" or "numeric" or "money" or "smallmoney" or "float" or "real" =>
-                Convert.ToString(value) ?? "NULL",
-            "datetime" or "datetime2" or "date" or "time" or "datetimeoffset" or "smalldatetime" =>
-                $"'{Convert.ToString(value)}'",
-            "uniqueidentifier" =>
-                $"'{value}'",
-            _ =>
-                $"N'{EscapeString(Convert.ToString(value) ?? "")}'",
-        };
-    }
-
-    private static string SqlLiteral(string value, string typeName)
-    {
-        if (value == "NULL") return "NULL";
-
-        return typeName.ToLower() switch
-        {
-            "int" or "bigint" or "smallint" or "tinyint" or "bit"
-                or "decimal" or "numeric" or "money" or "smallmoney"
-                or "float" or "real" => value,
-            _ => $"N'{EscapeString(value)}'",
-        };
-    }
-
-    private static string EscapeString(string s) => s.Replace("'", "''");
+    // SqlValueFormatter handles all type→literal conversion.;
 }

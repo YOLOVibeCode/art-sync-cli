@@ -116,6 +116,13 @@ internal sealed class DacFxSchemaSession : ISchemaSession
                 var errors = _result.GetErrors()
                     .Select(e => e.Message)
                     .ToList();
+
+                // DacFx reports connection failures as an invalid result rather than
+                // throwing. Detect them and re-map to SchemaConnectionException → exit 40.
+                var connMsg = errors.FirstOrDefault(IsConnectionErrorMessage);
+                if (connMsg is not null)
+                    throw new SchemaConnectionException(connMsg);
+
                 return new SchemaCompareInfo(
                     IsIdentical: false,
                     HasNoComparableObjects: true,
@@ -212,5 +219,28 @@ internal sealed class DacFxSchemaSession : ISchemaSession
     {
         if (_result is null)
             throw new InvalidOperationException("Must call Compare() before GenerateScript() or Publish().");
+    }
+
+    /// <summary>
+    /// Returns true when a DacFx error message looks like a network / login failure
+    /// that should be surfaced as exit code 40 rather than 108.
+    /// </summary>
+    private static bool IsConnectionErrorMessage(string msg)
+    {
+        static bool Ci(string s, string sub) =>
+            s.Contains(sub, StringComparison.OrdinalIgnoreCase);
+
+        return Ci(msg, "network-related")
+            || Ci(msg, "instance-specific")
+            || Ci(msg, "server was not found")
+            || Ci(msg, "could not open a connection")
+            || Ci(msg, "login failed")
+            || Ci(msg, "cannot open database")
+            || Ci(msg, "connection attempt failed")
+            || Ci(msg, "could not connect")
+            // On macOS/Linux DacFx surfaces MSAL assembly load failure
+            // when any connection attempt fails — treat as connection error.
+            || Ci(msg, "Could not load file or assembly")
+            || Ci(msg, "The system cannot find");
     }
 }

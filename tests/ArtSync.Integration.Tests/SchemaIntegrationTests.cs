@@ -149,11 +149,13 @@ public sealed class SchemaIntegrationTests
     public void BrokenConnection_Returns40()
     {
 
+        // 192.0.2.1 = TEST-NET-1 (RFC 5737) — guaranteed unreachable.
+        // Uses SQL auth to avoid MSAL being loaded before the TCP attempt.
         var req = new CommandRequest(
             Operation:      OperationType.SchemaCompare,
             Source:         new Endpoint(EndpointKind.ConnectionString,
-                                ConnectionString: "Server=does-not-exist.invalid;Database=X;" +
-                                                  "Integrated Security=True;Connect Timeout=3"),
+                                ConnectionString: "Server=192.0.2.1,1433;Database=X;" +
+                                                  "User ID=sa;Password=bad;TrustServerCertificate=True;Connect Timeout=2"),
             Target:         new Endpoint(EndpointKind.ConnectionString,
                                 ConnectionString: TestEnvironment.TgtCs),
             SyncMode:       SyncMode.None,

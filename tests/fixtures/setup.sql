@@ -112,12 +112,13 @@ CREATE TABLE dbo.Orders (
 GO
 
 -- Seed target with SAME data as source (so data tests start from identical state).
+-- CreatedAt must be specified explicitly so hash matches source exactly.
 
 SET IDENTITY_INSERT dbo.Customers ON;
-INSERT INTO dbo.Customers (CustomerId, Name, Email) VALUES
-    (1, N'Alice Turing',  N'alice@example.com'),
-    (2, N'Bob Lovelace',  N'bob@example.com'),
-    (3, N'Carol Shannon', NULL);
+INSERT INTO dbo.Customers (CustomerId, Name, Email, CreatedAt) VALUES
+    (1, N'Alice Turing',  N'alice@example.com', '2026-01-01 00:00:00.0000000'),
+    (2, N'Bob Lovelace',  N'bob@example.com',   '2026-01-01 00:00:00.0000000'),
+    (3, N'Carol Shannon', NULL,                  '2026-01-01 00:00:00.0000000');
 SET IDENTITY_INSERT dbo.Customers OFF;
 
 SET IDENTITY_INSERT dbo.Products ON;
@@ -133,6 +134,129 @@ INSERT INTO dbo.Orders (OrderId, CustomerId, OrderDate, TotalAmount) VALUES
     (2, 1, '2026-02-14', 34.98),
     (3, 2, '2026-01-20', 49.99);
 SET IDENTITY_INSERT dbo.Orders OFF;
+GO
+
+-- Fix the source Customers seed too — use same explicit CreatedAt values.
+UPDATE artsync_src.dbo.Customers SET CreatedAt = '2026-01-01 00:00:00.0000000';
+GO
+
+-- ── TypeSampler: one row covering every major SQL type ───────────────────────
+-- Used by DataTypeIntegrationTests to verify all types round-trip correctly
+-- through hash → compare → script → apply.
+--
+-- Created in BOTH databases (same schema); source row differs from target so
+-- the test can verify the full update-sync path.
+
+USE artsync_src;
+GO
+
+CREATE TABLE dbo.TypeSampler (
+    SamplerId         INT                NOT NULL PRIMARY KEY IDENTITY(1,1),
+    -- Integer family
+    ColBigInt         BIGINT             NULL,
+    ColSmallInt       SMALLINT           NULL,
+    ColTinyInt        TINYINT            NULL,
+    ColBit            BIT                NULL,
+    -- Numeric family
+    ColDecimal        DECIMAL(18,6)      NULL,
+    ColNumeric        NUMERIC(10,2)      NULL,
+    ColMoney          MONEY              NULL,
+    ColSmallMoney     SMALLMONEY         NULL,
+    ColFloat          FLOAT              NULL,
+    ColReal           REAL               NULL,
+    -- Date / time family
+    ColDate           DATE               NULL,
+    ColTime           TIME(7)            NULL,
+    ColDateTime       DATETIME           NULL,
+    ColDateTime2      DATETIME2(7)       NULL,
+    ColSmallDateTime  SMALLDATETIME      NULL,
+    ColDateTimeOffset DATETIMEOFFSET(7)  NULL,
+    -- String family
+    ColChar           CHAR(10)           NULL,
+    ColNChar          NCHAR(10)          NULL,
+    ColVarChar        VARCHAR(200)       NULL,
+    ColNVarChar       NVARCHAR(200)      NULL,
+    -- Binary family
+    ColBinary         BINARY(8)          NULL,
+    ColVarBinary      VARBINARY(100)     NULL,
+    -- Other
+    ColGuid           UNIQUEIDENTIFIER   NULL
+    -- NOTE: xml excluded from hash in v1 (LOB), so not in TypeSampler
+);
+GO
+
+-- Source: insert one row with non-null values for every type
+INSERT INTO dbo.TypeSampler (
+    ColBigInt, ColSmallInt, ColTinyInt, ColBit,
+    ColDecimal, ColNumeric, ColMoney, ColSmallMoney, ColFloat, ColReal,
+    ColDate, ColTime, ColDateTime, ColDateTime2, ColSmallDateTime, ColDateTimeOffset,
+    ColChar, ColNChar, ColVarChar, ColNVarChar,
+    ColBinary, ColVarBinary, ColGuid
+) VALUES (
+    9223372036854775807, 32767, 255, 1,
+    12345678.123456, 9999.99, 99999.9900, 214.7483, 3.14159265358979, CAST(2.71828 AS REAL),
+    '2026-08-13', '19:30:00.1234567', '2026-08-13 19:30:00.000', '2026-08-13 19:30:00.1234567',
+    '2026-08-13 19:30:00', '2026-08-13 19:30:00.1234567 +05:30',
+    'CHAR      ', N'NCHAR     ', 'varchar value', N'nvarchar value — ñoño',
+    0x0102030405060708, 0xDEADBEEF01020304,
+    'A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11'
+);
+GO
+
+
+USE artsync_tgt;
+GO
+
+CREATE TABLE dbo.TypeSampler (
+    SamplerId         INT                NOT NULL PRIMARY KEY IDENTITY(1,1),
+    ColBigInt         BIGINT             NULL,
+    ColSmallInt       SMALLINT           NULL,
+    ColTinyInt        TINYINT            NULL,
+    ColBit            BIT                NULL,
+    ColDecimal        DECIMAL(18,6)      NULL,
+    ColNumeric        NUMERIC(10,2)      NULL,
+    ColMoney          MONEY              NULL,
+    ColSmallMoney     SMALLMONEY         NULL,
+    ColFloat          FLOAT              NULL,
+    ColReal           REAL               NULL,
+    ColDate           DATE               NULL,
+    ColTime           TIME(7)            NULL,
+    ColDateTime       DATETIME           NULL,
+    ColDateTime2      DATETIME2(7)       NULL,
+    ColSmallDateTime  SMALLDATETIME      NULL,
+    ColDateTimeOffset DATETIMEOFFSET(7)  NULL,
+    ColChar           CHAR(10)           NULL,
+    ColNChar          NCHAR(10)          NULL,
+    ColVarChar        VARCHAR(200)       NULL,
+    ColNVarChar       NVARCHAR(200)      NULL,
+    ColBinary         BINARY(8)          NULL,
+    ColVarBinary      VARBINARY(100)     NULL,
+    ColGuid           UNIQUEIDENTIFIER   NULL
+);
+GO
+
+-- Seed target TypeSampler with SAME row as source so databases start identical.
+-- DataTypeIntegrationTests explicitly empties this table before each test.
+
+SET IDENTITY_INSERT dbo.TypeSampler ON;
+INSERT INTO dbo.TypeSampler (
+    SamplerId,
+    ColBigInt, ColSmallInt, ColTinyInt, ColBit,
+    ColDecimal, ColNumeric, ColMoney, ColSmallMoney, ColFloat, ColReal,
+    ColDate, ColTime, ColDateTime, ColDateTime2, ColSmallDateTime, ColDateTimeOffset,
+    ColChar, ColNChar, ColVarChar, ColNVarChar,
+    ColBinary, ColVarBinary, ColGuid
+) VALUES (
+    1,
+    9223372036854775807, 32767, 255, 1,
+    12345678.123456, 9999.99, 99999.9900, 214.7483, 3.14159265358979, CAST(2.71828 AS REAL),
+    '2026-08-13', '19:30:00.1234567', '2026-08-13 19:30:00.000', '2026-08-13 19:30:00.1234567',
+    '2026-08-13 19:30:00', '2026-08-13 19:30:00.1234567 +05:30',
+    'CHAR      ', N'NCHAR     ', 'varchar value', N'nvarchar value — ñoño',
+    0x0102030405060708, 0xDEADBEEF01020304,
+    'A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11'
+);
+SET IDENTITY_INSERT dbo.TypeSampler OFF;
 GO
 
 PRINT 'Integration test databases created: artsync_src, artsync_tgt';
