@@ -1,6 +1,6 @@
 # ArtSync
 
-> Developed by **[YOLOVibeCode](https://github.com/YOLOVibeCode)**, a subsidiary of **Noxirsoft**.
+> Developed by **[YOLOVibeCode](https://github.com/YOLOVibeCode)**, a subsidiary of **[Noctusoft](https://www.noctusoft.com)**.
 
 A free, open-source drop-in replacement for the Devart dbForge Schema Compare and Data Compare CLI tools (`schemacompare.com`, `datacompare.com`, `dbforgesql.com`).
 
@@ -146,7 +146,7 @@ All engine code sits behind thin interfaces. `ArtSync.Cli` depends only on `IArg
 
 ## About
 
-ArtSync is a project by **YOLOVibeCode**, a subsidiary of **Noxirsoft**.
+ArtSync is a project by **YOLOVibeCode**, a subsidiary of **[Noctusoft](https://www.noctusoft.com)**.
 
 ---
 
