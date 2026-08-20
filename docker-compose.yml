@@ -5,6 +5,7 @@ services:
       SA_PASSWORD: "ArtSync_Test@2026"
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
+      MSSQL_MEMORY_LIMIT_MB: "2048"
     ports:
       - "1433:1433"
     volumes:

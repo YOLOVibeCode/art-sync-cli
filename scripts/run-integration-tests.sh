@@ -11,21 +11,28 @@ SQL_HOST="localhost,1433"
 SETUP_SQL="$REPO_ROOT/tests/fixtures/setup.sql"
 
 echo "==> Starting SQL Server via Docker Compose…"
-docker compose -f "$REPO_ROOT/docker-compose.yml" up -d --wait
+docker compose -f "$REPO_ROOT/docker-compose.yml" up -d --wait --wait-timeout 180
 
 echo "==> Waiting for SQL Server to accept connections…"
 MAX_TRIES=20
+READY=0
 for i in $(seq 1 $MAX_TRIES); do
     if docker compose -f "$REPO_ROOT/docker-compose.yml" exec -T sqlserver \
         /opt/mssql-tools18/bin/sqlcmd \
         -S localhost -U sa -P "$SA_PASS" -C \
         -Q "SELECT 1" -b > /dev/null 2>&1; then
         echo "   SQL Server is ready."
+        READY=1
         break
     fi
     echo "   Attempt $i/$MAX_TRIES — retrying in 5 s…"
     sleep 5
 done
+if [[ "$READY" -ne 1 ]]; then
+    echo "ERROR: SQL Server did not accept connections in time." >&2
+    docker compose -f "$REPO_ROOT/docker-compose.yml" logs --tail 80 sqlserver || true
+    exit 1
+fi
 
 echo "==> Running test fixture setup…"
 docker compose -f "$REPO_ROOT/docker-compose.yml" exec -T sqlserver \

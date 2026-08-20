@@ -9,7 +9,7 @@
       datacompare.exe     (drop-in for datacompare.com)
       dbforgesql.exe      (drop-in for dbforgesql.com)
 
-    Run this script from the repository root after installing .NET 8+ SDK.
+    Run this script from the repository root after installing the .NET 10 SDK.
 
 .PARAMETER Runtime
     RID to publish for. Defaults to win-x64.

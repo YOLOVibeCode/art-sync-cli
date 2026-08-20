@@ -1,0 +1,211 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  unit:
+    name: Unit tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.slnx', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore ArtSync.slnx
+
+      - name: Build
+        run: dotnet build ArtSync.slnx --configuration Release --no-restore -warnaserror
+
+      - name: Test
+        run: >
+          dotnet test ArtSync.slnx
+          --configuration Release
+          --no-build
+          --filter "FullyQualifiedName!~ArtSync.Integration.Tests"
+          --logger "trx;LogFilePrefix=unit"
+          --results-directory test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results-${{ matrix.os }}
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  integration:
+    name: Integration (SQL Server 2022)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.slnx', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Live schema + data tests
+        run: |
+          chmod +x scripts/run-integration-tests.sh
+          ./scripts/run-integration-tests.sh --configuration Release --logger "trx;LogFilePrefix=integration" --results-directory "${{ github.workspace }}/test-results"
+
+      - name: SQL Server logs
+        if: failure()
+        run: docker compose logs --tail 200 sqlserver
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  publish:
+    name: Publish drop-in CLIs
+    needs: [unit, integration]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.slnx', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish linux-x64
+        run: |
+          chmod +x scripts/publish.sh
+          ./scripts/publish.sh linux-x64 Release
+
+      - name: Publish win-x64
+        run: ./scripts/publish.sh win-x64 Release
+
+      - name: Publish osx-x64
+        run: ./scripts/publish.sh osx-x64 Release
+
+      - name: Publish osx-arm64
+        run: ./scripts/publish.sh osx-arm64 Release
+
+      - name: Smoke-test linux binaries
+        run: |
+          set -euo pipefail
+          BIN=publish/artsync-linux-x64
+          "$BIN/schemacompare" /exitcodes
+          "$BIN/datacompare" /?
+          "$BIN/dbforgesql" /exitcodes
+
+      - name: Stage zip artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for rid in linux-x64 win-x64 osx-x64 osx-arm64; do
+            dir="publish/artsync-$rid"
+            files=()
+            for name in schemacompare datacompare dbforgesql; do
+              if [[ -f "$dir/$name" ]]; then
+                files+=("$dir/$name")
+              elif [[ -f "$dir/$name.exe" ]]; then
+                files+=("$dir/$name.exe")
+              else
+                echo "ERROR: missing $name for $rid" >&2
+                ls -la "$dir" >&2
+                exit 1
+              fi
+            done
+            zip -j "dist/artsync-$rid.zip" "${files[@]}"
+          done
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artsync-clis
+          path: dist/*.zip
+          retention-days: 30
+
+  ci-ok:
+    name: CI passed
+    if: always()
+    needs: [unit, integration, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check required jobs
+        run: |
+          set -euo pipefail
+          echo "unit=${{ needs.unit.result }}"
+          echo "integration=${{ needs.integration.result }}"
+          echo "publish=${{ needs.publish.result }}"
+          test "${{ needs.unit.result }}" = success
+          test "${{ needs.integration.result }}" = success
+          test "${{ needs.publish.result }}" = success
+
+  release:
+    name: GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [ci-ok]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: artsync-clis
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ github.ref_name }}" dist/*.zip \
+            --title "ArtSync ${{ github.ref_name }}" \
+            --generate-notes
