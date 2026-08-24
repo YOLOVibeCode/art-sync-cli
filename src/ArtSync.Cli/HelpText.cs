@@ -22,7 +22,7 @@ internal static class HelpText
           /reportformat:HTML|XML|CSV
           /log:<file>         Write execution log
           /argfile:<file>     Load switches from file (CLI switches win)
-          /compfile:<file>    .scomp/.dcomp project file
+          /compfile:<file>    .dcomp data project (CLI /source /target win). .scomp not yet.
           /filter:<file>      .scflt object filter (schema only)
           /q                  Quiet mode
 

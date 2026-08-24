@@ -112,12 +112,18 @@ public sealed class CanonicalPayloadTests
     // ── Float types ───────────────────────────────────────────────────────────
 
     [Fact]
-    public void FloatType_NoRound_CastToNVarchar()
+    public void FloatType_NoRound_UsesIeeeBits()
     {
         var expr = CanonicalPayload.BuildExpression("[Price]", "float", NoOpts);
-        expr.Should().Contain("CAST(");
-        expr.Should().Contain("NVARCHAR(50)");
+        expr.Should().Contain("VARBINARY(8)");
         expr.Should().NotContain("ROUND");
+    }
+
+    [Fact]
+    public void RealType_NoRound_UsesIeeeBits()
+    {
+        var expr = CanonicalPayload.BuildExpression("[Price]", "real", NoOpts);
+        expr.Should().Contain("VARBINARY(4)");
     }
 
     [Fact]
@@ -185,9 +191,17 @@ public sealed class CanonicalPayloadTests
     // ── Unknown type ──────────────────────────────────────────────────────────
 
     [Fact]
+    public void SqlVariant_UsesBinaryConvert()
+    {
+        var expr = CanonicalPayload.BuildExpression("[Val]", "sql_variant", NoOpts);
+        expr.Should().Contain("VARBINARY(8000)");
+        expr.Should().Contain(", 2)");
+    }
+
+    [Fact]
     public void UnknownType_FallsBackToNVarcharMax()
     {
-        var expr = CanonicalPayload.BuildExpression("[Col]", "sql_variant", NoOpts);
+        var expr = CanonicalPayload.BuildExpression("[Col]", "madeuptype", NoOpts);
         expr.Should().Contain("NVARCHAR(MAX)");
     }
 

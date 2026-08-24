@@ -70,6 +70,16 @@ public sealed class CliApp
 
         var req = ((ParseResult.Success)result).Request;
 
+        try
+        {
+            req = CompFileMerger.Apply(req);
+        }
+        catch (CompFileException ex)
+        {
+            _err.WriteLine($"Error: {ex.Message}");
+            return ex.ExitCode;
+        }
+
         if (!req.Quiet)
         {
             foreach (var w in req.Warnings)

@@ -161,12 +161,12 @@ public sealed class DataHandlerUnitTests
     }
 
     [Fact]
-    public void CompFile_Returns10_UntilImplemented()
+    public void CompFilePath_DoesNotBlockWhenEndpointsPresent()
     {
         var fake = new FakeDataCompare(
-            new DataCompareInfo(DataCompareStatus.Identical, 0, 0, 0, 0, [], []));
+            new DataCompareInfo(DataCompareStatus.Identical, 0, 0, 0, 0, ["dbo.Orders"], []));
 
-        DataHandler(fake).Run(MakeRequest(compFile: "data.dcomp")).ExitCode.Should().Be(10);
+        DataHandler(fake).Run(MakeRequest(compFile: "data.dcomp")).ExitCode.Should().Be(100);
     }
 
     // ─── Connection failure → exit 40 ─────────────────────────────────────────

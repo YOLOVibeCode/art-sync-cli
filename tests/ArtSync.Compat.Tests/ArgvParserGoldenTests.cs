@@ -552,6 +552,111 @@ public sealed class ArgvParserGoldenTests
             .Which.ExitCode.Should().Be(11);
     }
 
+    [Fact]
+    public void Data_SchedulerJob_CompfilePlusLiveConnections_Parses()
+    {
+        // Shape of a captured Windows scheduler job: /compfile + /source+/target
+        // override + /sync + /log. Passwords and hosts are placeholders.
+        const string src =
+            @"connection:Data Source=example.database.windows.net;Encrypt=False;Enlist=False;Initial Catalog=ExampleDb;Integrated Security=False;Password=P@ss^#$word;User ID=example;Pooling=False;Transaction Scope Local=True";
+        const string tgt =
+            @"connection:Data Source=SQLHOST\INSTANCE;Encrypt=False;Enlist=False;Initial Catalog=ExampleDb;Integrated Security=False;Password=placeholder;User ID=example;Pooling=False;Transaction Scope Local=True";
+
+        var argv = new[]
+        {
+            "/datacompare",
+            @"/compfile:C:\Users\Worker\Desktop\TheSync!.dcomp",
+            "/sync",
+            "/source", src,
+            "/target", tgt,
+            @"/log:D:\Apps\Jobs\sync_20260101.log",
+        };
+
+        var req = AssertSuccess(Parser().Parse(argv, "datacompare.com"));
+        req.Operation.Should().Be(OperationType.DataCompare);
+        req.SyncMode.Should().Be(SyncMode.Apply);
+        req.CompFilePath.Should().Be(@"C:\Users\Worker\Desktop\TheSync!.dcomp");
+        req.LogPath.Should().Be(@"D:\Apps\Jobs\sync_20260101.log");
+        req.Source!.ConnectionString.Should().Contain("Transaction Scope Local=True");
+        req.Source.ConnectionString.Should().Contain("P@ss^#$word");
+    }
+
+    [Fact]
+    public void Data_QuotedSwitchValues_AreUnquoted()
+    {
+        var argv = new[]
+        {
+            "/datacompare",
+            @"/compfile:""C:\Users\Worker\Desktop\TheSync!.dcomp""",
+            "/source", @"connection:""Data Source=example;Initial Catalog=Db""",
+            "/target", @"connection:""Data Source=other;Initial Catalog=Db""",
+            @"/log:""D:\Apps\Jobs\sync.log""",
+        };
+
+        var req = AssertSuccess(Parser().Parse(argv, "datacompare"));
+        req.CompFilePath.Should().Be(@"C:\Users\Worker\Desktop\TheSync!.dcomp");
+        req.LogPath.Should().Be(@"D:\Apps\Jobs\sync.log");
+        req.Source!.ConnectionString.Should().Be("Data Source=example;Initial Catalog=Db");
+    }
+
+    [Fact]
+    public void Data_BackupSwitchesExplicitlyOff_AreNoOps()
+    {
+        var argv = new[]
+        {
+            "/datacompare",
+            "/source", "connection:Data Source=S;Initial Catalog=D",
+            "/target", "connection:Data Source=T;Initial Catalog=D",
+            "/CreateBackupFolder:No",
+            "/NeedCompressBackup:No",
+            "/UseSchemaNamePrefix:No",
+            "/DisableForeignKeys:No",
+            "/DisableDmlTriggers:No",
+            "/ExcludeObjectsByMask:*tbl_Audit*,util.log",
+        };
+
+        var req = AssertSuccess(Parser().Parse(argv, "datacompare.com"));
+        req.Options.Should().NotContainKey("CreateBackupFolder");
+        req.Options.Should().NotContainKey("NeedCompressBackup");
+        req.Options.Should().ContainKey("UseSchemaNamePrefix");
+        req.Options["UseSchemaNamePrefix"].Should().Be("No");
+        req.Options.Should().ContainKey("ExcludeObjectsByMask");
+        req.Options["ExcludeObjectsByMask"].Should().Contain("tbl_Audit");
+    }
+
+    [Fact]
+    public void Data_BackupSwitchOn_Returns10()
+    {
+        var argv = new[]
+        {
+            "/datacompare",
+            "/source", "connection:Data Source=S;Initial Catalog=D",
+            "/target", "connection:Data Source=T;Initial Catalog=D",
+            "/CreateBackupFolder:Yes",
+        };
+
+        Parser().Parse(argv, "datacompare")
+            .Should().BeOfType<ParseResult.Failure>()
+            .Which.ExitCode.Should().Be(10);
+    }
+
+    [Fact]
+    public void Data_ReportFormatXls_Returns10()
+    {
+        var argv = new[]
+        {
+            "/datacompare",
+            "/source", "connection:Data Source=S;Initial Catalog=D",
+            "/target", "connection:Data Source=T;Initial Catalog=D",
+            "/report:out.xls",
+            "/reportformat:xls",
+        };
+
+        Parser().Parse(argv, "datacompare")
+            .Should().BeOfType<ParseResult.Failure>()
+            .Which.ExitCode.Should().Be(10);
+    }
+
     // ─── Helper ───────────────────────────────────────────────────────────────
 
     private static CommandRequest AssertSuccess(ParseResult result)

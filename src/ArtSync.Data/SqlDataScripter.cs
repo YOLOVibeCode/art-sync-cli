@@ -217,9 +217,10 @@ internal sealed class SqlDataScripter
                     // DBCC CHECKIDENT requires a literal value; use a variable.
                     var varName = $"@__reseed_{reseedIdx++}";
                     var applyName = TableRef(ti with { TargetQualifiedName = ResolveTgt(t) }, options);
-                    var bareTable = applyName.Replace("[", "").Replace("]", "");
                     sb.AppendLine($"DECLARE {varName} BIGINT = (SELECT ISNULL(MAX({idCol.QuotedName}), 0) FROM {applyName});");
-                    sb.AppendLine($"DBCC CHECKIDENT ('{bareTable}', RESEED, {varName});");
+                    // DBCC CHECKIDENT needs a schema-qualified name; stripping
+                    // [schema].[table] down to table breaks non-dbo objects.
+                    sb.AppendLine($"DBCC CHECKIDENT ('{applyName.Replace("'", "''")}', RESEED, {varName});");
                 }
             }
         }
@@ -359,6 +360,8 @@ internal sealed class SqlDataScripter
         {
             "geography" or "geometry" => $"{c.QuotedName}.Serialize() AS {c.QuotedName}",
             "hierarchyid" => $"CAST({c.QuotedName} AS NVARCHAR(900)) AS {c.QuotedName}",
+            "sql_variant" =>
+                $"SQL_VARIANT_PROPERTY({c.QuotedName}, 'BaseType') AS {QuoteIdent(c.Name + "__svt")}, {c.QuotedName}",
             _ => c.QuotedName,
         };
     }
@@ -384,6 +387,7 @@ internal sealed class SqlDataScripter
         var colNames = string.Join(", ", allCols.Select(c => c.QuotedName));
         var tableRef = TableRef(tableInfo, options);
 
+        int batches = 0;
         for (int i = 0; i < rows.Count; i += BulkBatchSize)
         {
             var batch = rows.Skip(i).Take(BulkBatchSize).ToList();
@@ -394,7 +398,14 @@ internal sealed class SqlDataScripter
                 var comma = j < batch.Count - 1 ? "," : ";";
                 sb.AppendLine($"    ({values}){comma}");
             }
+
+            batches++;
+            // New batch every 20 inserts (~2k rows) so Azure SQL is not one giant command.
+            if (batches % 20 == 0)
+                sb.AppendLine("GO");
         }
+        if (batches % 20 != 0)
+            sb.AppendLine("GO");
     }
 
     private static string BuildInsert(
@@ -455,6 +466,11 @@ internal sealed class SqlDataScripter
     {
         if (!row.TryGetValue(c.Name, out var v) || v is null) return "NULL";
         if (c.IsLob) GuardLobSize(v);
+        if (c.TypeName.Equals("sql_variant", StringComparison.OrdinalIgnoreCase))
+        {
+            row.TryGetValue(c.Name + "__svt", out var baseType);
+            return SqlValueFormatter.FormatSqlVariant(v, baseType as string);
+        }
         return SqlValueFormatter.Format(v, c.TypeName);
     }
 

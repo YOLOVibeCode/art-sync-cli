@@ -114,6 +114,7 @@ public static class KnownOptions
         ["micomput"]                            = "IgnoreComputedColumns",
         ["ignorelobcolumns"]                    = "IgnoreLobColumns",
         ["milob"]                               = "IgnoreLobColumns",
+        ["ignoreblobcolumns"]                   = "IgnoreLobColumns",
         ["ignorerowguidcolumns"]                = "IgnoreRowguidColumns",
         ["mirowguid"]                           = "IgnoreRowguidColumns",
         ["ignoretemporaltablesyscolumns"]       = "IgnoreTemporalTableSysColumns",
@@ -137,6 +138,7 @@ public static class KnownOptions
         ["bulkinsert"]                          = "BulkInsert",
         ["bi"]                                  = "BulkInsert",
         ["useschemaprefix"]                     = "UseSchemaNamePrefix",
+        ["useschemanameprefix"]                 = "UseSchemaNamePrefix",
         ["useschananameprefix"]                 = "UseSchemaNamePrefix",
         ["fullnames"]                           = "UseSchemaNamePrefix",
         ["reseedidentitycolumns"]               = "ReseedIdentityColumns",
@@ -250,6 +252,22 @@ public static class KnownOptions
 
     public static bool IsUnsupportedInV1(string canonicalName)
         => _unsupportedInV1.Contains(canonicalName);
+
+    /// <summary>
+    /// Devart jobs often pass unsupported backup switches as <c>:No</c>.
+    /// That is a no-op, not a request to create backups.
+    /// </summary>
+    public static bool IsExplicitlyOff(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+        return value.Equals("no", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("n", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("false", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("f", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("off", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("0", StringComparison.OrdinalIgnoreCase);
+    }
 
     public static bool IsWarningOnly(string rawSwitchName)
         => _warningOnlyNames.Contains(rawSwitchName);

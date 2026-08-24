@@ -197,13 +197,13 @@ public sealed class SchemaHandlerUnitTests
     }
 
     [Fact]
-    public void CompFile_Returns10_UntilImplemented()
+    public void CompFilePath_DoesNotBlockWhenEndpointsPresent()
     {
         var fake = new FakeSchemaCompare(
             info: new SchemaCompareInfo(true, false, 0, [], []));
 
         Handler(fake).Run(MakeRequest(compFile: "schema.scomp"))
-            .ExitCode.Should().Be(10);
+            .ExitCode.Should().Be(100);
     }
 
     // ─── Filter file: missing .scflt → exit 114 ───────────────────────────────

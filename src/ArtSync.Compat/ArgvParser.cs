@@ -288,6 +288,12 @@ public sealed class ArgvParser : IArgvParser
         {
             if (KnownOptions.IsUnsupportedInV1(canonical))
             {
+                if (KnownOptions.IsExplicitlyOff(inlineValue))
+                {
+                    i++;
+                    return null;
+                }
+
                 return ParseResult.Fail(10,
                     $"Option /{switchName} ({canonical}) is not implemented in ArtSync v1. " +
                     $"Remove it from the command line.");
@@ -346,9 +352,17 @@ public sealed class ArgvParser : IArgvParser
         else
         {
             name = body[..colon];
-            value = body[(colon + 1)..];
+            value = Unquote(body[(colon + 1)..]);
         }
         return true;
+    }
+
+    private static string Unquote(string value)
+    {
+        value = value.Trim();
+        if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+            return value[1..^1];
+        return value;
     }
 
     private static bool IsSwitch(string token, string switchNameLower)
@@ -417,7 +431,7 @@ public sealed class ArgvParser : IArgvParser
                     "(valid keys: connection, server, database, user, password).");
 
             var key = token[..colon].ToLowerInvariant();
-            var value = token[(colon + 1)..];
+            var value = Unquote(token[(colon + 1)..]);
 
             return key switch
             {

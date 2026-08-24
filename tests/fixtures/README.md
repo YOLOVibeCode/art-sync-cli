@@ -67,23 +67,19 @@ docker exec -i $(docker compose ps -q sqlserver) \
   < tests/fixtures/setup.sql
 ```
 
-## `/compfile` (`.scomp` / `.dcomp`) — waiting for a real fixture
+## `/compfile` (`.dcomp`)
 
-`/compfile` parsing is intentionally **not implemented**. Both `SchemaOperationHandler` and
-`DataOperationHandler` return exit **10** with a clear message when `/compfile` is supplied.
+Data-compare project files are loaded by `ArtSync.Compat.CompFileParser`. A sanitized
+capture of the Devart `CompareDocument` schema is in [`sample.dcomp`](sample.dcomp).
 
-To unblock a parser, commit a captured `.scomp` or `.dcomp` file here in
-`tests/fixtures/` (e.g. `example.scomp`). The file must come from a real Devart
-dbForge run — do **not** invent XML structure, as the exact element names and
-attribute layout are proprietary.
+- Command line `/source` and `/target` override project connections (SPEC §3.3).
+- Compare and synchronization options fill in only when the CLI did not set them.
+- `CreateBackupFolder` / `NeedCompressBackup` in the project are ignored unless
+  `BackupDatabase` is on (then exit 10).
+- Objects with `Included="False"` are appended to `ExcludeObjectsByMask`.
+- `.scomp` (schema projects) still exit **10**.
 
-Once a sample exists in this directory:
-1. Create `src/ArtSync.Compat/CompFileParser.cs` that reads the XML and populates
-   a `CommandRequest` (connections, options, skipped objects list).
-2. Wire it into `SchemaOperationHandler` / `DataOperationHandler` as a pre-step
-   before the `/source`+`/target` validation.
-3. Add an integration test that passes the fixture via `/compfile` and expects
-   the same exit code as when passing source/target directly.
+Corrupt XML returns exit **30**. Missing file returns **10**.
 
 ## Local SQL Server (no Docker)
 

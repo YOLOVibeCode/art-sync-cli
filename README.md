@@ -51,6 +51,7 @@ ArtSync replaces the executables. `.bat` files, Task Scheduler entries, and argf
 | `schemacompare … /sync` | Yes | 0 applied, 112 nothing to sync |
 | `schemacompare … /sync:file.sql` | Yes | 101; target untouched |
 | `datacompare /source … /target … /sync` | Yes | Same 100 / 101 / 0 / 112 / 108 / 40 pattern |
+| `/compfile:.dcomp` + `/sync` | Yes (data) | CLI `/source` `/target` override project connections |
 | `/argfile` + CLI override | Yes | CLI wins, matching Devart precedence |
 | `/filter:.scflt` | Yes | 114 on bad XML |
 | `/report` + `/reportformat HTML\|XML\|CSV` + `/log` | Yes | 107 report I/O, 106 log I/O; passwords redacted |
@@ -62,7 +63,7 @@ These are not bugs. They exit 10 or leave the target alone **by design**.
 
 | Item | Behavior | Why |
 |---|---|---|
-| `/compfile` (`.scomp` / `.dcomp`) | Exit 10 | Do not invent project XML until a captured file is in `tests/fixtures/` |
+| `/compfile` (`.scomp`) | Exit 10 | Schema project files are not loaded in v1 |
 | `backup:` / `snapshot:` / `scriptsfolder:` endpoints | Exit 10 | Live databases only in v1 |
 | `/reportformat:XLS` | Exit 10 | Excel reports are out of scope |
 | Extra tables only on the target | Left in place | DacFx `DropObjectsNotInSource` stays false — dropping extras by default is unsafe |
@@ -110,6 +111,18 @@ Integration tests skip unless `ARTSYNC_INTEGRATION=true`.
 
 That starts SQL Server 2022, seeds `artsync_src` / `artsync_tgt`, and runs the schema + data suite (FK graphs, data types, reports, apply). See [tests/fixtures/README.md](tests/fixtures/README.md).
 
+### MARS lab (Azure SQL + local restore)
+
+Disposable stand-ins for the captured Azure → on-prem job. Not production. See [infra/README.md](infra/README.md).
+
+```bash
+./scripts/lab-azure.sh   # Azure SQL MARS (westus2, serverless)
+./scripts/lab-up.sh      # Docker SQL + restore _data/*.bak as [MARS]
+./scripts/lab-smoke.sh   # both sides reachable
+```
+
+`.env` is gitignored. Tear down with `./scripts/lab-down.sh`.
+
 ### Publish the three executable names
 
 **Windows (PowerShell):**
@@ -134,7 +147,7 @@ CI publishes `linux-x64`, `win-x64`, `osx-x64`, and `osx-arm64` on every green m
 
 ### Drop-in on Windows scheduler
 
-Replace the Devart executable on `PATH`, or update the scheduled task program from `….com` to `….exe` of the same basename. Confirm the job uses live `/source` and `/target`, not `/compfile` or `backup:` endpoints.
+Replace the Devart executable on `PATH`, or update the scheduled task program from `….com` to `….exe` of the same basename. Live `/source` and `/target` still override `/compfile` connections. `.scomp` and `backup:` endpoints are not supported.
 
 Recommended first production cutover:
 
@@ -223,7 +236,8 @@ All engine code sits behind thin interfaces. `ArtSync.Cli` depends only on `IArg
 | `/sync` / `/sync:<file>` | Complete |
 | `/report` + `/reportformat:HTML\|XML\|CSV` | Complete (XLS → exit 10) |
 | `/log` | Complete (passwords redacted) |
-| `/compfile` (`.scomp` / `.dcomp`) | Exit 10 until a real file is in `tests/fixtures/` |
+| `/compfile` (`.dcomp`) | Complete — connections, compare/sync options, exclude masks, `Included="False"` objects. CLI wins. |
+| `/compfile` (`.scomp`) | Exit 10 — schema projects not loaded in v1 |
 | `/source backup:…` | Exit 10 — out of scope in v1 |
 | Extra objects on the target (schema drop) | Not dropped (`DropObjectsNotInSource` stays false) |
 | Azure SQL Database | Supported |
