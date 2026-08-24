@@ -69,6 +69,27 @@ public sealed class SqlNameMaskTests
     }
 
     [Fact]
+    public void ExcludeMask_SchedulerList_DropsHistoryAndQueueTables()
+    {
+        var opts = new Dictionary<string, string>
+        {
+            ["ExcludeObjectsByMask"] =
+                "*tbl_PreliminaryReceipts*,*tbl_PRLoan*,*tbl_MARSVal*,*tbl_SvcPeriodBal*," +
+                "*tbl_MARSSvcCompare*,*tbl_Reminder*,*tbl_EmailNotificationQueue*," +
+                "*relationshipcashflowhistory*,*tbl_ReportPVHistory*,*tbl_reporthistory*," +
+                "*tbl_History_IRR*,*tbl_History_PV*,*ReleasePrice*,*OccupancyStatus*," +
+                "*ReleasedLog*,*ReleasePriceLog*,*InterestCalcMethod*,*PrincipalCalculation*," +
+                "util.log,*BankAccount*,*IncomeType*,*ReportCount*,*ReportingMonth*",
+        };
+
+        SqlNameMask.IsTableIncluded("[dbo].[tbl_EmailNotificationQueue]", opts).Should().BeFalse();
+        SqlNameMask.IsTableIncluded("[dbo].[tbl_History_PV]", opts).Should().BeFalse();
+        SqlNameMask.IsTableIncluded("[dbo].[BankAccount]", opts).Should().BeFalse();
+        SqlNameMask.IsTableIncluded("[dbo].[Customers]", opts).Should().BeTrue();
+        SqlNameMask.IsTableIncluded("[dbo].[Loan]", opts).Should().BeTrue();
+    }
+
+    [Fact]
     public void IncludeMask_KeepsOnlyMatches()
     {
         var opts = new Dictionary<string, string> { ["IncludeObjectsByMask"] = "dbo.Cust*" };

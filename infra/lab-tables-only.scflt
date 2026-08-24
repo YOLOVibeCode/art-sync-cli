@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lab filter: tables/schemas/keys only. Procs, views, users, and Azure-hostile types stay off. -->
+<FiltersCollection>
+  <Filter ObjectName="Table" Checked="True" />
+  <Filter ObjectName="Schema" Checked="True" />
+  <Filter ObjectName="Index" Checked="True" />
+  <Filter ObjectName="PrimaryKeyConstraint" Checked="True" />
+  <Filter ObjectName="ForeignKeyConstraint" Checked="True" />
+  <Filter ObjectName="DefaultConstraint" Checked="True" />
+  <Filter ObjectName="CheckConstraint" Checked="True" />
+  <Filter ObjectName="UniqueConstraint" Checked="True" />
+  <Filter ObjectName="UserDefinedTableType" Checked="True" />
+  <Filter ObjectName="UserDefinedDataType" Checked="True" />
+  <Filter ObjectName="View" Checked="False" />
+  <Filter ObjectName="Procedure" Checked="False" />
+  <Filter ObjectName="ScalarFunction" Checked="False" />
+  <Filter ObjectName="TableValuedFunction" Checked="False" />
+  <Filter ObjectName="DmlTrigger" Checked="False" />
+  <Filter ObjectName="DatabaseDdlTrigger" Checked="False" />
+  <Filter ObjectName="User" Checked="False" />
+  <Filter ObjectName="Role" Checked="False" />
+  <Filter ObjectName="DatabaseRole" Checked="False" />
+  <Filter ObjectName="ApplicationRole" Checked="False" />
+  <Filter ObjectName="SqlAssembly" Checked="False" />
+  <Filter ObjectName="XmlSchemaCollection" Checked="False" />
+  <Filter ObjectName="Synonym" Checked="False" />
+  <Filter ObjectName="Sequence" Checked="False" />
+  <Filter ObjectName="DatabaseOptions" Checked="False" />
+  <Filter ObjectName="Filegroup" Checked="False" />
+  <Filter ObjectName="Permission" Checked="False" />
+  <Filter ObjectName="RoleMembership" Checked="False" />
+  <Filter ObjectName="ExtendedProperty" Checked="False" />
+  <Filter ObjectName="PartitionFunction" Checked="False" />
+  <Filter ObjectName="PartitionScheme" Checked="False" />
+  <Filter ObjectName="FullTextCatalog" Checked="False" />
+  <Filter ObjectName="Certificate" Checked="False" />
+</FiltersCollection>

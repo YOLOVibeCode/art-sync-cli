@@ -37,13 +37,6 @@ public sealed class SchemaOperationHandler : IOperationHandler
             logger.LogLine($"  target={DescribeEndpoint(request.Target)}");
             logger.LogLine($"  sync={request.SyncMode}");
 
-            // ── Input validation ──────────────────────────────────────────────
-
-            if (request.CompFilePath is not null)
-                return Finish(logger, new(10,
-                    "/compfile (.scomp) is not yet supported. " +
-                    "Provide /source and /target endpoints directly."));
-
             if (request.Source is null)
                 return Finish(logger, new(10,
                     "No /source specified. " +

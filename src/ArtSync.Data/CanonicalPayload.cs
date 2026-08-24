@@ -57,8 +57,12 @@ public static class CanonicalPayload
             "float" or "real" when IsRoundFloat(options) =>
                 $"CAST(ROUND({quotedColumnName}, 10) AS NVARCHAR(50))",
 
-            "float" or "real" =>
-                $"CAST({quotedColumnName} AS NVARCHAR(50))",
+            // IEEE bits — CAST to NVARCHAR is not stable across all engines/values.
+            "float" =>
+                $"CONVERT(NVARCHAR(32), CONVERT(VARBINARY(8), {quotedColumnName}), 2)",
+
+            "real" =>
+                $"CONVERT(NVARCHAR(32), CONVERT(VARBINARY(4), {quotedColumnName}), 2)",
 
             // Binary types: hex-encode so HASHBYTES sees printable chars
             "binary" or "varbinary" or "rowversion" or "timestamp" =>
@@ -83,6 +87,11 @@ public static class CanonicalPayload
             // Integer types: straight cast
             "int" or "bigint" or "smallint" or "tinyint" =>
                 $"CAST({quotedColumnName} AS NVARCHAR(20))",
+
+            // sql_variant: hash the native binary (includes base type + value).
+            // CAST(... AS NVARCHAR) collapses int 42 and N'42' to the same string.
+            "sql_variant" =>
+                $"CONVERT(NVARCHAR(MAX), CONVERT(VARBINARY(8000), {quotedColumnName}), 2)",
 
             // XML: stringify (bounded via LOB path above when isLob=true)
             "xml" =>

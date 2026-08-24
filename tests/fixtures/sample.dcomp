@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sanitized capture of a Devart dbForge Data Compare .dcomp (CompareDocument schema 2.0). -->
+<CompareDocument>
+  <Properties>
+    <DatabaseProvider>aa8afe9c-7d62-4564-b477-c12e62e0f440</DatabaseProvider>
+    <ProviderVersion>5.8.106.0</ProviderVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+  </Properties>
+  <Source Type="Database">
+    <DataConnection>ExampleDb.example.database.windows.net</DataConnection>
+    <ConnectionString>Data Source=example.database.windows.net;Encrypt=False;Initial Catalog=ExampleDb;Integrated Security=False;User ID=example</ConnectionString>
+    <Schema>ExampleDb</Schema>
+  </Source>
+  <Target Type="Database">
+    <DataConnection>ExampleDb.SQLHOST\INSTANCE</DataConnection>
+    <ConnectionString>Data Source=SQLHOST\INSTANCE;Encrypt=False;Initial Catalog=ExampleDb;Integrated Security=False;User ID=example</ConnectionString>
+    <Schema>ExampleDb</Schema>
+  </Target>
+  <Options>
+    <PropertyValue Name="MappingIgnoreSpaces">true</PropertyValue>
+    <PropertyValue Name="IgnoreBlobColumns">false</PropertyValue>
+    <PropertyValue Name="CompareMemoryOptimizedTables">false</PropertyValue>
+    <PropertyValue Name="CompareColumnStoreTables">false</PropertyValue>
+    <PropertyValue Name="IgnoreIdentityColumns">false</PropertyValue>
+    <PropertyValue Name="IgnoreColumnsByMask">false</PropertyValue>
+    <PropertyValue Name="MappingColumnsMask" xml:space="preserve">*ModifiedDate*,*CreatedOn*,*UpdatedBy*</PropertyValue>
+    <PropertyValue Name="ExcludeObjectsByMask">true</PropertyValue>
+    <PropertyValue Name="ExcludeObjectsMask" xml:space="preserve">*tbl_History_*,util.log</PropertyValue>
+    <PropertyValue Name="IncludeObjectsByMask">false</PropertyValue>
+    <PropertyValue Name="IncludeObjectsMask" xml:space="preserve">*</PropertyValue>
+    <PropertyValue Name="IgnoreComputedColumns">true</PropertyValue>
+    <PropertyValue Name="CompareTables">true</PropertyValue>
+    <PropertyValue Name="CompareViews">false</PropertyValue>
+    <PropertyValue Name="CheckDifferent">true</PropertyValue>
+    <PropertyValue Name="CheckOnlyInSource">true</PropertyValue>
+    <PropertyValue Name="CheckOnlyInTarget">true</PropertyValue>
+    <PropertyValue Name="CheckIdentical">true</PropertyValue>
+  </Options>
+  <SynchronizationOptions>
+    <PropertyValue Name="BackupDatabase">false</PropertyValue>
+    <PropertyValue Name="CreateBackupFolder">true</PropertyValue>
+    <PropertyValue Name="NeedCompressBackup">true</PropertyValue>
+    <PropertyValue Name="UseSchemaNamePrefix">false</PropertyValue>
+    <PropertyValue Name="IncludeUseDatabase">true</PropertyValue>
+    <PropertyValue Name="DisableForeignKeys">true</PropertyValue>
+    <PropertyValue Name="DropKeys">false</PropertyValue>
+    <PropertyValue Name="DisableDmlTriggers">true</PropertyValue>
+    <PropertyValue Name="DisableDdlTriggers">false</PropertyValue>
+    <PropertyValue Name="BulkInsert">false</PropertyValue>
+    <PropertyValue Name="ReseedIdentityColumns">true</PropertyValue>
+  </SynchronizationOptions>
+  <Mapping>
+    <Schemas>
+      <Object SourceName="dbo" TargetName="dbo" State="DefaultMapped" Included="True" />
+      <Object SourceName="pr" TargetName="pr" State="DefaultMapped" Included="True" />
+    </Schemas>
+    <ComparedObjects>
+      <Object SourceName="dbo.tbl_Loans" TargetName="dbo.tbl_Loans" SourceType="Table" TargetType="Table" IncludedInScript="False" />
+      <Object SourceName="dbo.tbl_Address" TargetName="dbo.tbl_Address" SourceType="Table" TargetType="Table" IncludedInScript="False" />
+      <Object SourceName="pr.tbl_BankAccount" TargetName="pr.tbl_BankAccount" SourceType="Table" TargetType="Table" Included="False" IncludedInScript="False" />
+      <Object SourceName="pr.tbl_PreliminaryReceipts" TargetName="pr.tbl_PreliminaryReceipts" SourceType="Table" TargetType="Table" Included="False" IncludedInScript="False" />
+    </ComparedObjects>
+  </Mapping>
+</CompareDocument>

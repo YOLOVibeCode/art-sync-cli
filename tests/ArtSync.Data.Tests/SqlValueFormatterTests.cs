@@ -222,6 +222,24 @@ public sealed class SqlValueFormatterTests
     }
 
     [Fact]
+    public void SqlVariant_Int_UsesTypedConvert()
+        => SqlValueFormatter.Format(42, "sql_variant").Should().Be("CONVERT(int, 42)");
+
+    [Fact]
+    public void SqlVariant_String_UsesNVarcharConvert()
+        => SqlValueFormatter.Format("Active", "sql_variant")
+            .Should().Be("CONVERT(nvarchar(4000), N'Active')");
+
+    [Fact]
+    public void SqlVariant_VarcharBaseType_UsesVarcharConvert()
+        => SqlValueFormatter.FormatSqlVariant("D", "varchar")
+            .Should().Be("CONVERT(varchar(8000), N'D')");
+
+    [Fact]
+    public void SqlVariant_Int_DoesNotQuoteAsString()
+        => SqlValueFormatter.Format(42, "sql_variant").Should().NotContain("N'");
+
+    [Fact]
     public void String_SingleQuoteEscaped()
         => SqlValueFormatter.Format("O'Brien", "nvarchar").Should().Be("N'O''Brien'");
 

@@ -24,4 +24,8 @@
     <ProjectReference Include="..\..\src\ArtSync.Compat\ArtSync.Compat.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\fixtures\sample.dcomp" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

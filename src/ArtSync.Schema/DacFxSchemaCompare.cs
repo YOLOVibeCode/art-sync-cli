@@ -33,6 +33,7 @@ public sealed class DacFxSchemaCompare : ISchemaCompare
             var comparison = new SchemaComparison(srcEp, tgtEp);
 
             DacFxOptionMap.Apply(comparison.Options, options);
+            ApplyAzureSqlPublishDefaults(comparison.Options, tgtCs);
 
             return new DacFxSchemaSession(comparison, filter, options);
         }
@@ -51,7 +52,7 @@ public sealed class DacFxSchemaCompare : ISchemaCompare
         {
             if (string.IsNullOrWhiteSpace(ep.ConnectionString))
                 throw new ArgumentException($"Connection string for {role} endpoint is empty.");
-            return ep.ConnectionString!;
+            return DevartConnectionString.ForSqlClient(ep.ConnectionString);
         }
 
         // LiveSplit → build an ADO.NET connection string.
@@ -89,6 +90,52 @@ public sealed class DacFxSchemaCompare : ISchemaCompare
             || msg.Contains("login", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("server", StringComparison.OrdinalIgnoreCase)
             || ex is Microsoft.Data.SqlClient.SqlException;
+    }
+
+    /// <summary>
+    /// Azure SQL cannot host on-prem logins/users/filegroups. DacFx also
+    /// treats SQL Server vs Azure SQL as an incompatible platform.
+    /// </summary>
+    internal static void ApplyAzureSqlPublishDefaults(DacDeployOptions deployOptions, string targetCs)
+    {
+        if (targetCs.IndexOf(".database.windows.net", StringComparison.OrdinalIgnoreCase) < 0)
+            return;
+
+        deployOptions.AllowIncompatiblePlatform = true;
+        deployOptions.ScriptDatabaseOptions = false;
+        deployOptions.BlockOnPossibleDataLoss = false;
+        deployOptions.ExcludeObjectTypes =
+        [
+            ObjectType.Users,
+            ObjectType.Logins,
+            ObjectType.RoleMembership,
+            ObjectType.Permissions,
+            ObjectType.DatabaseRoles,
+            ObjectType.ApplicationRoles,
+            ObjectType.DatabaseOptions,
+            ObjectType.Filegroups,
+            ObjectType.Assemblies,
+            ObjectType.Views,
+            ObjectType.StoredProcedures,
+            ObjectType.ScalarValuedFunctions,
+            ObjectType.TableValuedFunctions,
+            ObjectType.DatabaseTriggers,
+            ObjectType.ServerTriggers,
+            ObjectType.Synonyms,
+            ObjectType.ExtendedProperties,
+            ObjectType.XmlSchemaCollections,
+            ObjectType.FullTextCatalogs,
+            ObjectType.Certificates,
+            ObjectType.PartitionFunctions,
+            ObjectType.PartitionSchemes,
+            ObjectType.EventNotifications,
+            ObjectType.Endpoints,
+            ObjectType.LinkedServers,
+            ObjectType.LinkedServerLogins,
+            ObjectType.ServerRoles,
+            ObjectType.ServerRoleMembership,
+            ObjectType.Audits,
+        ];
     }
 }
 
@@ -194,7 +241,13 @@ internal sealed class DacFxSchemaSession : ISchemaSession
             var targetName = (_comparison.Target as SchemaCompareDatabaseEndpoint)?.DatabaseName
                              ?? "Target";
             var scriptResult = _result!.GenerateScript(targetName);
-            return scriptResult.Success ? scriptResult.Script : null;
+            if (scriptResult.Success)
+                return scriptResult.Script;
+
+            var detail = scriptResult.Message
+                         ?? scriptResult.Exception?.Message
+                         ?? "DacFx returned Success=false with no message.";
+            throw new SchemaIoException($"Script generation failed: {detail}", scriptResult.Exception);
         }
         catch (Exception ex)
         {
@@ -211,10 +264,13 @@ internal sealed class DacFxSchemaSession : ISchemaSession
             if (!publishResult.Success)
             {
                 var msgs = publishResult.Errors
-                    .Select(e => e.Message)
-                    .Take(5);
-                throw new SchemaConnectionException(
-                    $"Publish failed: {string.Join("; ", msgs)}");
+                    .Select(e => string.IsNullOrWhiteSpace(e.Message)
+                        ? e.Exception?.Message ?? $"error {e.Number}"
+                        : e.Message)
+                    .Take(8)
+                    .ToList();
+                var detail = msgs.Count > 0 ? string.Join("; ", msgs) : "no DacFx error details";
+                throw new SchemaConnectionException($"Publish failed: {detail}");
             }
         }
         catch (SchemaConnectionException) { throw; }

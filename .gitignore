@@ -59,3 +59,14 @@ logs/
 
 # Argfiles that may contain passwords (keep sample/ fixtures, not real ones)
 *.argfile
+
+# Local captured jobs, backups, and Devart project files — never commit
+_data/
+MARS_PROD_AZURE_TO_ONPREM_DATA_SYNC.bat
+*_PROD_*.bat
+*.dcomp
+*.scomp
+*.bak
+!tests/fixtures/*.dcomp
+!tests/fixtures/*.scomp
+UPDATE_AsOfDate.sql

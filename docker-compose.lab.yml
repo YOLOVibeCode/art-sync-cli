@@ -1,0 +1,11 @@
+# Lab overlay: mount captured backups and give SQL Server more RAM.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d
+#
+# CI keeps using docker-compose.yml only so GitHub Actions does not create an empty _data/.
+
+services:
+  sqlserver:
+    environment:
+      MSSQL_MEMORY_LIMIT_MB: "4096"
+    volumes:
+      - ./_data:/bak:ro

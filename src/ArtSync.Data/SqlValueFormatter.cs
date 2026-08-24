@@ -116,11 +116,68 @@ public static class SqlValueFormatter
                     ? $"'{g:D}'"    // "D" = 32 hex digits with hyphens, no braces
                     : $"'{EscapeString(value.ToString()!)}'",
 
+            // ── sql_variant — typed CONVERT so int 42 does not become N'42' ───
+            "sql_variant" => FormatSqlVariant(value, baseType: null),
+
             // ── String / XML — N'...' with escaped single quotes ──────────────
             _ =>
                 $"N'{EscapeString(Convert.ToString(value, CultureInfo.InvariantCulture) ?? "")}'",
         };
     }
+
+    /// <summary>
+    /// Emits a T-SQL literal that preserves the sql_variant base type.
+    /// <c>INSERT ... VALUES (N'42')</c> stores nvarchar, not int.
+    /// </summary>
+    internal static string FormatSqlVariant(object value, string? baseType)
+    {
+        var bt = string.IsNullOrWhiteSpace(baseType)
+            ? InferSqlVariantBaseType(value)
+            : baseType.Trim().ToLowerInvariant();
+
+        return bt switch
+        {
+            "bit" => value is bool b ? (b ? "CONVERT(bit, 1)" : "CONVERT(bit, 0)")
+                     : $"CONVERT(bit, {Convert.ToInt32(value, CultureInfo.InvariantCulture)})",
+            "tinyint" => $"CONVERT(tinyint, {Convert.ToByte(value, CultureInfo.InvariantCulture)})",
+            "smallint" => $"CONVERT(smallint, {Convert.ToInt16(value, CultureInfo.InvariantCulture)})",
+            "int" => $"CONVERT(int, {Convert.ToInt32(value, CultureInfo.InvariantCulture)})",
+            "bigint" => $"CONVERT(bigint, {Convert.ToInt64(value, CultureInfo.InvariantCulture)})",
+            "decimal" or "numeric" =>
+                $"CONVERT(decimal(38, 18), {Convert.ToDecimal(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture)})",
+            "money" or "smallmoney" =>
+                $"CONVERT({bt}, {Convert.ToDecimal(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture)})",
+            "float" => $"CONVERT(float, {Convert.ToDouble(value, CultureInfo.InvariantCulture).ToString("R", CultureInfo.InvariantCulture)})",
+            "real" => $"CONVERT(real, {Convert.ToSingle(value, CultureInfo.InvariantCulture).ToString("R", CultureInfo.InvariantCulture)})",
+            "datetime" or "smalldatetime" or "datetime2" or "date" or "time" or "datetimeoffset" =>
+                $"CONVERT({bt}, {Format(value, bt)})",
+            "uniqueidentifier" => $"CONVERT(uniqueidentifier, {Format(value, "uniqueidentifier")})",
+            "binary" or "varbinary" =>
+                $"CONVERT(varbinary(8000), {Format(value, "varbinary")})",
+            "varchar" or "char" =>
+                $"CONVERT({bt}(8000), N'{EscapeString(Convert.ToString(value, CultureInfo.InvariantCulture) ?? "")}')",
+            _ =>
+                $"CONVERT(nvarchar(4000), N'{EscapeString(Convert.ToString(value, CultureInfo.InvariantCulture) ?? "")}')",
+        };
+    }
+
+    private static string InferSqlVariantBaseType(object value) => value switch
+    {
+        bool => "bit",
+        byte => "tinyint",
+        short => "smallint",
+        int => "int",
+        long => "bigint",
+        decimal => "decimal",
+        double => "float",
+        float => "real",
+        DateTime => "datetime",
+        DateTimeOffset => "datetimeoffset",
+        Guid => "uniqueidentifier",
+        TimeSpan => "time",
+        byte[] => "varbinary",
+        _ => "nvarchar",
+    };
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

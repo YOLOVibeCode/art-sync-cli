@@ -37,13 +37,6 @@ public sealed class DataOperationHandler : IOperationHandler
             logger.LogLine($"  target={DescribeEndpoint(request.Target)}");
             logger.LogLine($"  sync={request.SyncMode}");
 
-            // ── Input validation ──────────────────────────────────────────────
-
-            if (request.CompFilePath is not null)
-                return Finish(logger, new(10,
-                    "/compfile (.dcomp) is not yet supported. " +
-                    "Provide /source and /target endpoints directly."));
-
             if (request.Source is null)
                 return Finish(logger, new(10,
                     "No /source specified. " +
@@ -60,6 +53,16 @@ public sealed class DataOperationHandler : IOperationHandler
                 $"  compare done: tables={info.ComparableTables.Count} " +
                 $"srcOnly={info.OnlyInSourceRows} tgtOnly={info.OnlyInTargetRows} " +
                 $"diff={info.DifferentRows}");
+
+            foreach (var g in _engine.LastDiffs
+                         .GroupBy(d => d.TableName, StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                int src = g.Count(d => d.Kind == RowDiffKind.OnlyInSource);
+                int tgt = g.Count(d => d.Kind == RowDiffKind.OnlyInTarget);
+                int chg = g.Count(d => d.Kind == RowDiffKind.Different);
+                logger.LogLine($"  table {g.Key}: {g.Count()} row(s) (+{src} src-only, -{tgt} tgt-only, ~{chg} changed)");
+            }
 
             if (info.SkippedTables.Count > 0)
                 logger.LogLine($"  skipped tables: {string.Join(", ", info.SkippedTables)}");

@@ -167,7 +167,7 @@ public sealed class SqlDataCompare : IDataCompare
         {
             if (string.IsNullOrWhiteSpace(ep.ConnectionString))
                 throw new ArgumentException("Connection string is empty.");
-            return ep.ConnectionString!;
+            return DevartConnectionString.ForSqlClient(ep.ConnectionString);
         }
 
         if (string.IsNullOrWhiteSpace(ep.Server))   throw new ArgumentException("Missing server.");

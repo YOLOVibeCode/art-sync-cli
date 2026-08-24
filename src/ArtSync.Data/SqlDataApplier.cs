@@ -57,7 +57,7 @@ internal sealed class SqlDataApplier
                 using var cmd = tx is null
                     ? new SqlCommand(batch, conn)
                     : new SqlCommand(batch, conn, tx);
-                cmd.CommandTimeout = 300;
+                cmd.CommandTimeout = 0;
                 cmd.ExecuteNonQuery();
             }
             tx?.Commit();

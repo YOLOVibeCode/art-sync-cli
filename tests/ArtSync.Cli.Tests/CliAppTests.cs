@@ -197,6 +197,54 @@ public sealed class CliAppTests
         captured.Source!.Server.Should().Be("SrcServer");
         captured.Target!.Server.Should().Be("TgtServer");
     }
+
+    [Fact]
+    public void CompFile_MissingDcomp_Returns10()
+    {
+        var code = BuildApp().Run(
+            new[] { "/datacompare", "/compfile:" + Path.Combine(Path.GetTempPath(), "missing-artsync.dcomp") },
+            "datacompare");
+        code.Should().Be(10);
+    }
+
+    [Fact]
+    public void CompFile_CorruptDcomp_Returns30()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), $"artsync-cli-bad-{Guid.NewGuid():N}.dcomp");
+        File.WriteAllText(tmp, "<nope/>");
+        try
+        {
+            BuildApp().Run(new[] { "/datacompare", "/compfile:" + tmp }, "datacompare")
+                .Should().Be(30);
+        }
+        finally { File.Delete(tmp); }
+    }
+
+    [Fact]
+    public void CompFile_SampleDcomp_MergesIntoHandlerRequest()
+    {
+        CommandRequest? captured = null;
+        var handler = new StubHandler(100, req => captured = req);
+        var fixture = Path.Combine(AppContext.BaseDirectory, "sample.dcomp");
+
+        var code = BuildApp(handler).Run(
+            new[]
+            {
+                "/datacompare",
+                "/compfile:" + fixture,
+                "/source", "connection:Data Source=cli-src;Initial Catalog=X;Password=secret",
+                "/target", "connection:Data Source=cli-tgt;Initial Catalog=X;Password=secret",
+                "/sync",
+            },
+            "datacompare");
+
+        code.Should().Be(100);
+        captured.Should().NotBeNull();
+        captured!.Source!.ConnectionString.Should().Contain("cli-src");
+        captured.Options["ExcludeObjectsByMask"].Should().Contain("pr.tbl_BankAccount");
+        captured.Options["IncludeObjectsByMask"].Should().Contain("dbo.tbl_Loans");
+        captured.Options["DisableForeignKeys"].Should().Be("yes");
+    }
 }
 
 // ─── Test doubles ─────────────────────────────────────────────────────────────
